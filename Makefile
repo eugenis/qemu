@@ -391,7 +391,8 @@ s390-zipl.rom \
 s390-ccw.img \
 spapr-rtas.bin slof.bin \
 palcode-clipper \
-u-boot.e500
+u-boot.e500 \
+vdso-linux-x64.so
 else
 BLOBS=
 endif
