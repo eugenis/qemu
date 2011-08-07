@@ -399,6 +399,17 @@ static ExitStatus insn_iohl(DisassContext *ctx, uint32_t insn)
     return NO_EXIT;
 }
 
+static ExitStatus insn_fsmbi(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI16;
+
+    tcg_gen_movi_tl(cpu_gpr[rt][0], helper_fsmb(imm << 0));
+    tcg_gen_movi_tl(cpu_gpr[rt][1], helper_fsmb(imm << 4));
+    tcg_gen_movi_tl(cpu_gpr[rt][2], helper_fsmb(imm << 8));
+    tcg_gen_movi_tl(cpu_gpr[rt][3], helper_fsmb(imm << 12));
+    return NO_EXIT;
+}
+
 /* ---------------------------------------------------------------------- */
 /* Section 4: Integer and Logical Instructions.  */
 
@@ -667,6 +678,65 @@ static void gen_mpyhhau(TCGv out, TCGv a, TCGv b)
 
 FOREACH_RR(mpyhhau, gen_mpyhhau)
 
+FOREACH_RR1(clz, gen_helper_clz)
+FOREACH_RR1(cntb, gen_helper_cntb)
+
+static ExitStatus insn_fsmb(DisassContext *ctx, uint32_t insn)
+{
+    TCGv temp = tcg_temp_new();
+    DISASS_RR1;
+
+    tcg_gen_mov_tl(temp, cpu_gpr[ra][0]);
+    gen_helper_fsmb(cpu_gpr[rt][0], temp);
+    tcg_gen_shli_tl(temp, temp, 4);
+    gen_helper_fsmb(cpu_gpr[rt][1], temp);
+    tcg_gen_shli_tl(temp, temp, 4);
+    gen_helper_fsmb(cpu_gpr[rt][2], temp);
+    tcg_gen_shli_tl(temp, temp, 4);
+    gen_helper_fsmb(cpu_gpr[rt][3], temp);
+
+    tcg_temp_free(temp);
+    return NO_EXIT;
+}
+
+static ExitStatus insn_fsmh(DisassContext *ctx, uint32_t insn)
+{
+    TCGv temp = tcg_temp_new();
+    DISASS_RR1;
+
+    tcg_gen_mov_tl(temp, cpu_gpr[ra][0]);
+    gen_helper_fsmh(cpu_gpr[rt][0], temp);
+    tcg_gen_shli_tl(temp, temp, 2);
+    gen_helper_fsmh(cpu_gpr[rt][1], temp);
+    tcg_gen_shli_tl(temp, temp, 2);
+    gen_helper_fsmh(cpu_gpr[rt][2], temp);
+    tcg_gen_shli_tl(temp, temp, 2);
+    gen_helper_fsmh(cpu_gpr[rt][3], temp);
+
+    tcg_temp_free(temp);
+    return NO_EXIT;
+}
+
+static ExitStatus insn_fsm(DisassContext *ctx, uint32_t insn)
+{
+    TCGv hold, test;
+    int i;
+    DISASS_RR1;
+
+    hold = tcg_temp_new();
+    test = tcg_temp_new();
+
+    tcg_gen_mov_tl(hold, cpu_gpr[ra][0]);
+    for (i = 0; i < 4; ++i) {
+        tcg_gen_shli_tl(test, hold, i);
+        tcg_gen_sari_tl(cpu_gpr[rt][i], test, 31);
+    }
+
+    tcg_temp_free(test);
+    tcg_temp_free(hold);
+    return NO_EXIT;
+}
+
 /* ---------------------------------------------------------------------- */
 /* Section 6: Shift and Rotate Instructions.  */
 
@@ -773,7 +843,7 @@ static InsnDescr const translate_table[0x800] = {
     INSN(0x410, RI16, ilhu),
     INSN(0x408, RI16, il),
     INSN(0x608, RI16, iohl),
-    // INSN(0x328, RI16, fsmbi),
+    INSN(0x328, RI16, fsmbi),
 
     // INSN(0x320, RI16, br),
     // INSN(0x300, RI16, bra),
@@ -817,11 +887,11 @@ static InsnDescr const translate_table[0x800] = {
     INSN(0x79c, RR, mpyhhu),
     INSN(0x69c, RR, mpyhhau),
 
-    // INSN(0x54a, RR, clz),
-    // INSN(0x568, RR, cntb),
-    // INSN(0x36c, RR, fsmb),
-    // INSN(0x36a, RR, fsmh),
-    // INSN(0x368, RR, fsm),
+    INSN(0x54a, RR, clz),
+    INSN(0x568, RR, cntb),
+    INSN(0x36c, RR, fsmb),
+    INSN(0x36a, RR, fsmh),
+    INSN(0x368, RR, fsm),
     // INSN(0x364, RR, gbb),
     // INSN(0x362, RR, gbh),
     // INSN(0x360, RR, gb),
