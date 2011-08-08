@@ -737,6 +737,42 @@ static ExitStatus insn_fsm(DisassContext *ctx, uint32_t insn)
     return NO_EXIT;
 }
 
+static ExitStatus insn_gbb(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RR1;
+
+    gen_helper_gbb(cpu_gpr[rt][0], cpu_gpr[ra][0], cpu_gpr[ra][1],
+                   cpu_gpr[ra][2], cpu_gpr[ra][3]);
+    tcg_gen_movi_tl(cpu_gpr[rt][1], 0);
+    tcg_gen_movi_tl(cpu_gpr[rt][2], 0);
+    tcg_gen_movi_tl(cpu_gpr[rt][3], 0);
+    return NO_EXIT;
+}
+
+static ExitStatus insn_gbh(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RR1;
+
+    gen_helper_gbh(cpu_gpr[rt][0], cpu_gpr[ra][0], cpu_gpr[ra][1],
+                   cpu_gpr[ra][2], cpu_gpr[ra][3]);
+    tcg_gen_movi_tl(cpu_gpr[rt][1], 0);
+    tcg_gen_movi_tl(cpu_gpr[rt][2], 0);
+    tcg_gen_movi_tl(cpu_gpr[rt][3], 0);
+    return NO_EXIT;
+}
+
+static ExitStatus insn_gb(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RR1;
+
+    gen_helper_gb(cpu_gpr[rt][0], cpu_gpr[ra][0], cpu_gpr[ra][1],
+                  cpu_gpr[ra][2], cpu_gpr[ra][3]);
+    tcg_gen_movi_tl(cpu_gpr[rt][1], 0);
+    tcg_gen_movi_tl(cpu_gpr[rt][2], 0);
+    tcg_gen_movi_tl(cpu_gpr[rt][3], 0);
+    return NO_EXIT;
+}
+
 /* ---------------------------------------------------------------------- */
 /* Section 6: Shift and Rotate Instructions.  */
 
@@ -892,9 +928,9 @@ static InsnDescr const translate_table[0x800] = {
     INSN(0x36c, RR, fsmb),
     INSN(0x36a, RR, fsmh),
     INSN(0x368, RR, fsm),
-    // INSN(0x364, RR, gbb),
-    // INSN(0x362, RR, gbh),
-    // INSN(0x360, RR, gb),
+    INSN(0x364, RR, gbb),
+    INSN(0x362, RR, gbh),
+    INSN(0x360, RR, gb),
     // INSN(0x1a6, RR, avgb),
     // INSN(0x0a6, RR, absdb),
     // INSN(0x4a6, RR, sumb),
