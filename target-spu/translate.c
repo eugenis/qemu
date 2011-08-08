@@ -803,6 +803,40 @@ static ExitStatus insn_xswd(DisassContext *ctx, uint32_t insn)
     return NO_EXIT;
 }
 
+FOREACH_RR(and, tcg_gen_and_tl)
+FOREACH_RR(andc, tcg_gen_andc_tl)
+FOREACH_RI10_ADJ(andbi, tcg_gen_and_tl, imm &= 0xff; imm *= 0x01010101)
+FOREACH_RI10_ADJ(andhi, tcg_gen_and_tl, imm &= 0xffff; imm |= imm << 16)
+FOREACH_RI10(andi, tcg_gen_and_tl)
+
+FOREACH_RR(or, tcg_gen_or_tl)
+FOREACH_RR(orc, tcg_gen_orc_tl)
+FOREACH_RI10_ADJ(orbi, tcg_gen_or_tl, imm &= 0xff; imm *= 0x01010101)
+FOREACH_RI10_ADJ(orhi, tcg_gen_or_tl, imm &= 0xffff; imm |= imm << 16)
+FOREACH_RI10(ori, tcg_gen_or_tl)
+
+static ExitStatus insn_orx(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RR1;
+
+    tcg_gen_or_tl(cpu_gpr[rt][0], cpu_gpr[ra][0], cpu_gpr[ra][2]);
+    tcg_gen_or_tl(cpu_gpr[rt][1], cpu_gpr[rt][1], cpu_gpr[ra][3]);
+    tcg_gen_or_tl(cpu_gpr[rt][0], cpu_gpr[rt][0], cpu_gpr[ra][1]);
+    tcg_gen_movi_tl(cpu_gpr[rt][1], 0);
+    tcg_gen_movi_tl(cpu_gpr[rt][2], 0);
+    tcg_gen_movi_tl(cpu_gpr[rt][3], 0);
+    return NO_EXIT;
+}
+
+FOREACH_RR(xor, tcg_gen_xor_tl)
+FOREACH_RI10_ADJ(xorbi, tcg_gen_xor_tl, imm &= 0xff; imm *= 0x01010101)
+FOREACH_RI10_ADJ(xorhi, tcg_gen_xor_tl, imm &= 0xffff; imm |= imm << 16)
+FOREACH_RI10(xori, tcg_gen_xor_tl)
+
+FOREACH_RR(nand, tcg_gen_nand_tl)
+FOREACH_RR(nor, tcg_gen_nor_tl)
+FOREACH_RR(eqv, tcg_gen_eqv_tl)
+
 /* ---------------------------------------------------------------------- */
 /* Section 6: Shift and Rotate Instructions.  */
 
@@ -876,15 +910,15 @@ static InsnDescr const translate_table[0x800] = {
     INSN(0x740, RI10, mpyi),
     INSN(0x750, RI10, mpyui),
 
-    // INSN(0x160, RI10, andbi),
-    // INSN(0x150, RI10, andhi),
-    // INSN(0x140, RI10, andi),
-    // INSN(0x060, RI10, orbi),
-    // INSN(0x050, RI10, orhi),
-    // INSN(0x040, RI10, ori),
-    // INSN(0x460, RI10, xorbi),
-    // INSN(0x450, RI10, xorhi),
-    // INSN(0x440, RI10, xori),
+    INSN(0x160, RI10, andbi),
+    INSN(0x150, RI10, andhi),
+    INSN(0x140, RI10, andi),
+    INSN(0x060, RI10, orbi),
+    INSN(0x050, RI10, orhi),
+    INSN(0x040, RI10, ori),
+    INSN(0x460, RI10, xorbi),
+    INSN(0x450, RI10, xorhi),
+    INSN(0x440, RI10, xori),
 
     // INSN(0x7f0, RI10, heqi),
     // INSN(0x4f0, RI10, hgti),
@@ -967,15 +1001,15 @@ static InsnDescr const translate_table[0x800] = {
     INSN(0x56c, RR, xsbh),
     INSN(0x55c, RR, xshw),
     INSN(0x54c, RR, xswd),
-    // INSN(0x182, RR, and),
-    // INSN(0x582, RR, andc),
-    // INSN(0x082, RR, or),
-    // INSN(0x592, RR, orc),
-    // INSN(0x3e0, RR, orx),
-    // INSN(0x482, RR, xor),
-    // INSN(0x192, RR, nand),
-    // INSN(0x092, RR, nor),
-    // INSN(0x492, RR, eqv),
+    INSN(0x182, RR, and),
+    INSN(0x582, RR, andc),
+    INSN(0x082, RR, or),
+    INSN(0x592, RR, orc),
+    INSN(0x3e0, RR, orx),
+    INSN(0x482, RR, xor),
+    INSN(0x192, RR, nand),
+    INSN(0x092, RR, nor),
+    INSN(0x492, RR, eqv),
 
     // INSN(0x0be, RR, shlh),
     // INSN(0x0fe, RR, shlhi),
