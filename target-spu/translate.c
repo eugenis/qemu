@@ -694,7 +694,6 @@ static ExitStatus insn_fsmb(DisassContext *ctx, uint32_t insn)
     gen_helper_fsmb(cpu_gpr[rt][2], temp);
     tcg_gen_shli_tl(temp, temp, 4);
     gen_helper_fsmb(cpu_gpr[rt][3], temp);
-
     tcg_temp_free(temp);
     return NO_EXIT;
 }
@@ -866,9 +865,9 @@ static ExitStatus insn_shufb(DisassContext *ctx, uint32_t insn)
     pb = tcg_temp_new_ptr();
     pc = tcg_temp_new_ptr();
     tcg_gen_addi_ptr(pt, cpu_env, rt * 16);
-    tcg_gen_addi_ptr(pt, cpu_env, ra * 16);
-    tcg_gen_addi_ptr(pt, cpu_env, rb * 16);
-    tcg_gen_addi_ptr(pt, cpu_env, rc * 16);
+    tcg_gen_addi_ptr(pa, cpu_env, ra * 16);
+    tcg_gen_addi_ptr(pb, cpu_env, rb * 16);
+    tcg_gen_addi_ptr(pc, cpu_env, rc * 16);
 
     gen_helper_shufb(pt, pa, pb, pc);
 
@@ -881,6 +880,593 @@ static ExitStatus insn_shufb(DisassContext *ctx, uint32_t insn)
 
 /* ---------------------------------------------------------------------- */
 /* Section 6: Shift and Rotate Instructions.  */
+
+FOREACH_RR(shlh, gen_helper_shlh)
+FOREACH_RI7_ADJ(shlhi, gen_helper_shlh, imm &= 0x1f; imm |= imm << 16)
+
+static void gen_shl(TCGv out, TCGv a, TCGv b)
+{
+    TCGv_i64 o64 = tcg_temp_new_i64();
+    TCGv_i64 b64 = tcg_temp_new_i64();
+
+    /* Note that the ISA truncates to 6 bits, which means that shift
+       values between 32 and 63 have a defined result of 0.  The easy
+       way to guarantee that portably is to perform a 64-bit shift.  */
+    tcg_gen_extu_i32_i64(o64, a);
+    tcg_gen_extu_i32_i64(b64, b);
+    tcg_gen_shl_i64(o64, o64, b64);
+    tcg_gen_extrl_i64_i32(out, o64);
+
+    tcg_temp_free_i64(o64);
+    tcg_temp_free_i64(b64);
+}
+
+FOREACH_RR(shl, gen_shl)
+
+static ExitStatus insn_shli(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI7;
+
+    imm &= 0x3f;
+    if (imm > 31) {
+        tcg_gen_movi_tl(cpu_gpr[rt][0], 0);
+        tcg_gen_movi_tl(cpu_gpr[rt][1], 0);
+        tcg_gen_movi_tl(cpu_gpr[rt][2], 0);
+        tcg_gen_movi_tl(cpu_gpr[rt][3], 0);
+    } else {
+        tcg_gen_shli_tl(cpu_gpr[rt][0], cpu_gpr[ra][0], imm);
+        tcg_gen_shli_tl(cpu_gpr[rt][1], cpu_gpr[ra][1], imm);
+        tcg_gen_shli_tl(cpu_gpr[rt][2], cpu_gpr[ra][2], imm);
+        tcg_gen_shli_tl(cpu_gpr[rt][3], cpu_gpr[ra][3], imm);
+    }
+    return NO_EXIT;
+}
+
+/* Compute OUT = (A||B) << SHL.  SHR is the complement to SHL.  */
+/* ??? It would be nice if the x86 SHLD insn was exposed as a primitive.
+   We'd be able to use it in expanding normal 64-bit shifts anyway.  */
+
+static void gen_shld(TCGv out, TCGv a, TCGv b, TCGv shl, TCGv shr)
+{
+    TCGv temp = tcg_temp_new();
+
+    tcg_gen_shr_tl(temp, b, shr);
+    tcg_gen_shl_tl(out, a, shl);
+    tcg_gen_or_tl(out, out, temp);
+
+    tcg_temp_free(temp);
+}
+
+static ExitStatus insn_shlqbi(DisassContext *ctx, uint32_t insn)
+{
+    TCGv shl, shr;
+    TCGLabel *lab_zero, *lab_done;
+    DISASS_RR;
+
+    lab_zero = gen_new_label();
+    lab_done = gen_new_label();
+
+    shl = tcg_temp_local_new();
+    tcg_gen_andi_tl(shl, cpu_gpr[rb][0], 7);
+    tcg_gen_brcondi_tl(TCG_COND_EQ, shl, 0, lab_zero);
+
+    shr = tcg_const_tl(32);
+    tcg_gen_sub_tl(shr, shr, shl);
+
+    gen_shld(cpu_gpr[rt][0], cpu_gpr[ra][0], cpu_gpr[ra][1], shl, shr);
+    gen_shld(cpu_gpr[rt][1], cpu_gpr[ra][1], cpu_gpr[ra][2], shl, shr);
+    gen_shld(cpu_gpr[rt][2], cpu_gpr[ra][2], cpu_gpr[ra][3], shl, shr);
+    tcg_gen_shl_tl(cpu_gpr[rt][3], cpu_gpr[ra][3], shl);
+
+    tcg_temp_free(shr);
+
+    tcg_gen_br(lab_done);
+    gen_set_label(lab_zero);
+
+    tcg_gen_mov_tl(cpu_gpr[rt][0], cpu_gpr[ra][0]);
+    tcg_gen_mov_tl(cpu_gpr[rt][1], cpu_gpr[ra][1]);
+    tcg_gen_mov_tl(cpu_gpr[rt][2], cpu_gpr[ra][2]);
+    tcg_gen_mov_tl(cpu_gpr[rt][3], cpu_gpr[ra][3]);
+
+    gen_set_label(lab_done);
+
+    tcg_temp_free(shl);
+    return NO_EXIT;
+}
+
+static ExitStatus insn_shlqbii(DisassContext *ctx, uint32_t insn)
+{
+    TCGv shl, shr;
+    DISASS_RI7;
+
+    imm &= 7;
+    if (imm == 0) {
+        tcg_gen_mov_tl(cpu_gpr[rt][0], cpu_gpr[ra][0]);
+        tcg_gen_mov_tl(cpu_gpr[rt][1], cpu_gpr[ra][1]);
+        tcg_gen_mov_tl(cpu_gpr[rt][2], cpu_gpr[ra][2]);
+        tcg_gen_mov_tl(cpu_gpr[rt][3], cpu_gpr[ra][3]);
+        return NO_EXIT;
+    }
+
+    shl = tcg_const_tl(imm);
+    shr = tcg_const_tl(32 - imm);
+
+    gen_shld(cpu_gpr[rt][0], cpu_gpr[ra][0], cpu_gpr[ra][1], shl, shr);
+    gen_shld(cpu_gpr[rt][1], cpu_gpr[ra][1], cpu_gpr[ra][2], shl, shr);
+    gen_shld(cpu_gpr[rt][2], cpu_gpr[ra][2], cpu_gpr[ra][3], shl, shr);
+    tcg_gen_shl_tl(cpu_gpr[rt][3], cpu_gpr[ra][3], shl);
+
+    tcg_temp_free(shl);
+    tcg_temp_free(shr);
+    return NO_EXIT;
+}
+
+static ExitStatus insn_shlqby(DisassContext *ctx, uint32_t insn)
+{
+    TCGv_ptr pt, pa;
+    DISASS_RR;
+
+    pt = tcg_temp_new_ptr();
+    pa = tcg_temp_new_ptr();
+    tcg_gen_addi_ptr(pt, cpu_env, rt * 16);
+    tcg_gen_addi_ptr(pa, cpu_env, ra * 16);
+
+    gen_helper_shlqby(pt, pa, cpu_gpr[rb][0]);
+
+    tcg_temp_free_ptr(pt);
+    tcg_temp_free_ptr(pa);
+    return NO_EXIT;
+}
+
+static ExitStatus insn_shlqbyi(DisassContext *ctx, uint32_t insn)
+{
+    unsigned shl, shr, i, wofs;
+    DISASS_RI7;
+
+    imm &= 0x1f;
+    shl = (imm & 3) * 8;
+    shr = 32 - shl;
+    wofs = imm >> 2;
+
+    if (shl == 0) {
+        for (i = 0; i + wofs < 4; ++i) {
+            tcg_gen_mov_tl(cpu_gpr[rt][i], cpu_gpr[ra][i + wofs]);
+        }
+    } else {
+        TCGv temp = tcg_temp_new();
+
+        for (i = 0; i + wofs < 4; ++i) {
+            tcg_gen_shli_tl(cpu_gpr[rt][i], cpu_gpr[ra][i + wofs], shl);
+            if (i > 0) {
+                tcg_gen_shri_tl(temp, cpu_gpr[ra][i + wofs], shr);
+                tcg_gen_or_tl(cpu_gpr[rt][i - 1], cpu_gpr[rt][i - 1], temp);
+            }
+        }
+
+        tcg_temp_free(temp);
+    }
+
+    for (; i < 4; ++i) {
+        tcg_gen_movi_tl(cpu_gpr[rt][i], 0);
+    }
+    return NO_EXIT;
+}
+
+static ExitStatus insn_shlqbybi(DisassContext *ctx, uint32_t insn)
+{
+    TCGv_ptr pt, pa;
+    TCGv temp;
+    DISASS_RR;
+
+    pt = tcg_temp_new_ptr();
+    pa = tcg_temp_new_ptr();
+    tcg_gen_addi_ptr(pt, cpu_env, rt * 16);
+    tcg_gen_addi_ptr(pa, cpu_env, ra * 16);
+
+    temp = tcg_temp_new();
+    tcg_gen_shri_tl(temp, cpu_gpr[rb][0], 3);
+
+    gen_helper_shlqby(pt, pa, temp);
+
+    tcg_temp_free(temp);
+    tcg_temp_free_ptr(pt);
+    tcg_temp_free_ptr(pa);
+    return NO_EXIT;
+}
+
+FOREACH_RR(roth, gen_helper_roth)
+FOREACH_RI7_ADJ(rothi, gen_helper_roth, imm &= 0xf; imm |= imm << 16)
+
+FOREACH_RR(rot, tcg_gen_rotl_tl)
+FOREACH_RI7_ADJ(roti, tcg_gen_rotl_tl, imm &= 0x1f)
+
+static ExitStatus insn_rotqby(DisassContext *ctx, uint32_t insn)
+{
+    TCGv_ptr pt, pa;
+    DISASS_RR;
+
+    pt = tcg_temp_new_ptr();
+    pa = tcg_temp_new_ptr();
+    tcg_gen_addi_ptr(pt, cpu_env, rt * 16);
+    tcg_gen_addi_ptr(pa, cpu_env, ra * 16);
+
+    gen_helper_rotqby(pt, pa, cpu_gpr[rb][0]);
+
+    tcg_temp_free_ptr(pt);
+    tcg_temp_free_ptr(pa);
+    return NO_EXIT;
+}
+
+static ExitStatus insn_rotqbyi(DisassContext *ctx, uint32_t insn)
+{
+    TCGv temp[4];
+    unsigned shl, shr, i, wofs;
+    DISASS_RI7;
+
+    imm &= 15;
+    shl = (imm & 3) * 8;
+    shr = 32 - shl;
+    wofs = imm >> 2;
+
+    alloc_temp(temp);
+
+    if (shl == 0) {
+        for (i = 0; i < 4; ++i) {
+            tcg_gen_mov_tl(temp[i], cpu_gpr[ra][(i + wofs) & 3]);
+        }
+    } else {
+        TCGv right = tcg_temp_new();
+
+        for (i = 0; i < 4; ++i) {
+            tcg_gen_shli_tl(temp[i], cpu_gpr[ra][(i + wofs) & 3], shl);
+        }
+        for (i = 0; i < 4; ++i) {
+            tcg_gen_shri_tl(right, cpu_gpr[ra][(i + 1 + wofs) & 3], shr);
+            tcg_gen_or_tl(temp[i], temp[i], right);
+        }
+
+        tcg_temp_free(right);
+    }
+
+    for (i = 0; i < 4; ++i) {
+        tcg_gen_mov_tl(cpu_gpr[rt][i], temp[i]);
+    }
+
+    free_temp(temp);
+    return NO_EXIT;
+}
+
+static ExitStatus insn_rotqbybi(DisassContext *ctx, uint32_t insn)
+{
+    TCGv_ptr pt, pa;
+    TCGv temp;
+    DISASS_RR;
+
+    pt = tcg_temp_new_ptr();
+    pa = tcg_temp_new_ptr();
+    tcg_gen_addi_ptr(pt, cpu_env, rt * 16);
+    tcg_gen_addi_ptr(pa, cpu_env, ra * 16);
+
+    temp = tcg_temp_new();
+    tcg_gen_shri_tl(temp, cpu_gpr[rb][0], 3);
+
+    gen_helper_rotqby(pt, pa, temp);
+
+    tcg_temp_free(temp);
+    tcg_temp_free_ptr(pt);
+    tcg_temp_free_ptr(pa);
+    return NO_EXIT;
+}
+
+static ExitStatus insn_rotqbi(DisassContext *ctx, uint32_t insn)
+{
+    TCGv shl, shr, hold;
+    TCGLabel *lab_zero, *lab_done;
+    DISASS_RR;
+
+    lab_zero = gen_new_label();
+    lab_done = gen_new_label();
+
+    shl = tcg_temp_local_new();
+    tcg_gen_andi_tl(shl, cpu_gpr[rb][0], 7);
+    tcg_gen_brcondi_tl(TCG_COND_EQ, shl, 0, lab_zero);
+
+    shr = tcg_const_tl(32);
+    tcg_gen_sub_tl(shr, shr, shl);
+
+    hold = tcg_temp_new();
+    tcg_gen_mov_tl(hold, cpu_gpr[ra][0]);
+
+    gen_shld(cpu_gpr[rt][0], cpu_gpr[ra][0], cpu_gpr[ra][1], shl, shr);
+    gen_shld(cpu_gpr[rt][1], cpu_gpr[ra][1], cpu_gpr[ra][2], shl, shr);
+    gen_shld(cpu_gpr[rt][2], cpu_gpr[ra][2], cpu_gpr[ra][3], shl, shr);
+    gen_shld(cpu_gpr[rt][3], cpu_gpr[ra][3], hold, shl, shr);
+
+    tcg_temp_free(shr);
+    tcg_temp_free(hold);
+
+    tcg_gen_br(lab_done);
+    gen_set_label(lab_zero);
+
+    tcg_gen_mov_tl(cpu_gpr[rt][0], cpu_gpr[ra][0]);
+    tcg_gen_mov_tl(cpu_gpr[rt][1], cpu_gpr[ra][1]);
+    tcg_gen_mov_tl(cpu_gpr[rt][2], cpu_gpr[ra][2]);
+    tcg_gen_mov_tl(cpu_gpr[rt][3], cpu_gpr[ra][3]);
+
+    gen_set_label(lab_done);
+
+    tcg_temp_free(shl);
+    return NO_EXIT;
+}
+
+static ExitStatus insn_rotqbii(DisassContext *ctx, uint32_t insn)
+{
+    TCGv shl, shr, hold;
+    DISASS_RI7;
+
+    imm &= 7;
+    if (imm == 0) {
+        tcg_gen_mov_tl(cpu_gpr[rt][0], cpu_gpr[ra][0]);
+        tcg_gen_mov_tl(cpu_gpr[rt][1], cpu_gpr[ra][1]);
+        tcg_gen_mov_tl(cpu_gpr[rt][2], cpu_gpr[ra][2]);
+        tcg_gen_mov_tl(cpu_gpr[rt][3], cpu_gpr[ra][3]);
+        return NO_EXIT;
+    }
+
+    shl = tcg_const_tl(imm);
+    shr = tcg_const_tl(32 - imm);
+
+    hold = tcg_temp_new();
+    tcg_gen_mov_tl(hold, cpu_gpr[ra][0]);
+
+    gen_shld(cpu_gpr[rt][0], cpu_gpr[ra][0], cpu_gpr[ra][1], shl, shr);
+    gen_shld(cpu_gpr[rt][1], cpu_gpr[ra][1], cpu_gpr[ra][2], shl, shr);
+    gen_shld(cpu_gpr[rt][2], cpu_gpr[ra][2], cpu_gpr[ra][3], shl, shr);
+    gen_shld(cpu_gpr[rt][3], cpu_gpr[ra][3], hold, shl, shr);
+
+    tcg_temp_free(shl);
+    tcg_temp_free(shr);
+    tcg_temp_free(hold);
+    return NO_EXIT;
+}
+
+FOREACH_RR(rothm, gen_helper_rothm)
+FOREACH_RI7_ADJ(rothmi, gen_helper_rothm, imm &= 0x1f; imm |= imm << 16)
+
+static void gen_rotm(TCGv out, TCGv a, TCGv b)
+{
+    TCGv_i64 o64 = tcg_temp_new_i64();
+    TCGv_i64 b64 = tcg_temp_new_i64();
+    TCGv binv = tcg_temp_new();
+
+    tcg_gen_neg_tl(binv, b);
+    tcg_gen_andi_tl(binv, binv, 63);
+
+    /* Note that the ISA truncates to 6 bits, which means that shift
+       values between 32 and 63 have a defined result of 0.  The easy
+       way to guarantee that portably is perform a 64-bit shift.  */
+    tcg_gen_extu_i32_i64(o64, a);
+    tcg_gen_extu_i32_i64(b64, binv);
+    tcg_gen_shr_i64(o64, o64, b64);
+    tcg_gen_extrl_i64_i32(out, o64);
+
+    tcg_temp_free_i64(o64);
+    tcg_temp_free_i64(b64);
+    tcg_temp_free(binv);
+}
+
+FOREACH_RR(rotm, gen_rotm)
+
+static ExitStatus insn_rotmi(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI7;
+
+    imm = -imm & 0x3f;
+    if (imm > 31) {
+        tcg_gen_movi_tl(cpu_gpr[rt][0], 0);
+        tcg_gen_movi_tl(cpu_gpr[rt][1], 0);
+        tcg_gen_movi_tl(cpu_gpr[rt][2], 0);
+        tcg_gen_movi_tl(cpu_gpr[rt][3], 0);
+    } else {
+        tcg_gen_shri_tl(cpu_gpr[rt][0], cpu_gpr[ra][0], imm);
+        tcg_gen_shri_tl(cpu_gpr[rt][1], cpu_gpr[ra][1], imm);
+        tcg_gen_shri_tl(cpu_gpr[rt][2], cpu_gpr[ra][2], imm);
+        tcg_gen_shri_tl(cpu_gpr[rt][3], cpu_gpr[ra][3], imm);
+    }
+    return NO_EXIT;
+}
+
+/* Compute OUT = (A||B) >> SHR.  SHL is the complement to SHR.  */
+
+static void gen_shrd(TCGv out, TCGv a, TCGv b, TCGv shr, TCGv shl)
+{
+    TCGv temp = tcg_temp_new();
+
+    tcg_gen_shl_tl(temp, a, shl);
+    tcg_gen_shr_tl(out, b, shr);
+    tcg_gen_or_tl(out, out, temp);
+
+    tcg_temp_free(temp);
+}
+
+static ExitStatus insn_rotqmby(DisassContext *ctx, uint32_t insn)
+{
+    TCGv_ptr pt, pa;
+    DISASS_RR;
+
+    pt = tcg_temp_new_ptr();
+    pa = tcg_temp_new_ptr();
+    tcg_gen_addi_ptr(pt, cpu_env, rt * 16);
+    tcg_gen_addi_ptr(pa, cpu_env, ra * 16);
+
+    gen_helper_rotqmby(pt, pa, cpu_gpr[rb][0]);
+
+    tcg_temp_free_ptr(pt);
+    tcg_temp_free_ptr(pa);
+    return NO_EXIT;
+}
+
+static ExitStatus insn_rotqmbyi(DisassContext *ctx, uint32_t insn)
+{
+    unsigned shl, shr;
+    int i, wofs;
+    DISASS_RI7;
+
+    imm = -imm & 0x1f;
+    shr = (imm & 3) * 8;
+    shl = 32 - shr;
+    wofs = imm >> 2;
+
+    if (shr == 0) {
+        for (i = 3; i - wofs >= 0; --i) {
+            tcg_gen_mov_tl(cpu_gpr[rt][i], cpu_gpr[ra][i - wofs]);
+        }
+    } else {
+        TCGv temp = tcg_temp_new();
+
+        for (i = 3; i - wofs >= 0; --i) {
+            tcg_gen_shri_tl(cpu_gpr[rt][i], cpu_gpr[ra][i - wofs], shr);
+            if (i < 3) {
+                tcg_gen_shli_tl(temp, cpu_gpr[ra][i - wofs], shl);
+                tcg_gen_or_tl(cpu_gpr[rt][i + 1], cpu_gpr[rt][i + 1], temp);
+            }
+        }
+
+        tcg_temp_free(temp);
+    }
+
+    for (; i >= 0; --i) {
+        tcg_gen_movi_tl(cpu_gpr[rt][i], 0);
+    }
+    return NO_EXIT;
+}
+
+static ExitStatus insn_rotqmbybi(DisassContext *ctx, uint32_t insn)
+{
+    TCGv_ptr pt, pa;
+    TCGv temp;
+    DISASS_RR;
+
+    pt = tcg_temp_new_ptr();
+    pa = tcg_temp_new_ptr();
+    tcg_gen_addi_ptr(pt, cpu_env, rt * 16);
+    tcg_gen_addi_ptr(pa, cpu_env, ra * 16);
+
+    temp = tcg_temp_new();
+    tcg_gen_shri_tl(temp, cpu_gpr[rb][0], 3);
+
+    gen_helper_shlqby(pt, pa, temp);
+
+    tcg_temp_free(temp);
+    tcg_temp_free_ptr(pt);
+    tcg_temp_free_ptr(pa);
+    return NO_EXIT;
+}
+
+static ExitStatus insn_rotqmbi(DisassContext *ctx, uint32_t insn)
+{
+    TCGv shl, shr;
+    TCGLabel *lab_zero, *lab_done;
+    DISASS_RR;
+
+    lab_zero = gen_new_label();
+    lab_done = gen_new_label();
+
+    shr = tcg_temp_local_new();
+    tcg_gen_neg_tl(shr, cpu_gpr[rb][0]);
+    tcg_gen_andi_tl(shr, shr, 7);
+    tcg_gen_brcondi_tl(TCG_COND_EQ, shr, 0, lab_zero);
+
+    shl = tcg_const_tl(32);
+    tcg_gen_sub_tl(shl, shl, shr);
+
+    gen_shrd(cpu_gpr[rt][3], cpu_gpr[ra][2], cpu_gpr[ra][3], shr, shl);
+    gen_shrd(cpu_gpr[rt][2], cpu_gpr[ra][1], cpu_gpr[ra][2], shr, shl);
+    gen_shrd(cpu_gpr[rt][1], cpu_gpr[ra][0], cpu_gpr[ra][1], shr, shl);
+    tcg_gen_shr_tl(cpu_gpr[rt][0], cpu_gpr[ra][0], shr);
+
+    tcg_temp_free(shl);
+
+    tcg_gen_br(lab_done);
+    gen_set_label(lab_zero);
+
+    tcg_gen_mov_tl(cpu_gpr[rt][0], cpu_gpr[ra][0]);
+    tcg_gen_mov_tl(cpu_gpr[rt][1], cpu_gpr[ra][1]);
+    tcg_gen_mov_tl(cpu_gpr[rt][2], cpu_gpr[ra][2]);
+    tcg_gen_mov_tl(cpu_gpr[rt][3], cpu_gpr[ra][3]);
+
+    gen_set_label(lab_done);
+
+    tcg_temp_free(shr);
+    return NO_EXIT;
+}
+
+static ExitStatus insn_rotqmbii(DisassContext *ctx, uint32_t insn)
+{
+    TCGv shl, shr;
+    DISASS_RI7;
+
+    imm = -imm & 7;
+    if (imm == 0) {
+        tcg_gen_mov_tl(cpu_gpr[rt][0], cpu_gpr[ra][0]);
+        tcg_gen_mov_tl(cpu_gpr[rt][1], cpu_gpr[ra][1]);
+        tcg_gen_mov_tl(cpu_gpr[rt][2], cpu_gpr[ra][2]);
+        tcg_gen_mov_tl(cpu_gpr[rt][3], cpu_gpr[ra][3]);
+        return NO_EXIT;
+    }
+
+    shr = tcg_const_tl(imm);
+    shl = tcg_const_tl(32 - imm);
+
+    gen_shrd(cpu_gpr[rt][3], cpu_gpr[ra][2], cpu_gpr[ra][3], shr, shl);
+    gen_shrd(cpu_gpr[rt][2], cpu_gpr[ra][1], cpu_gpr[ra][2], shr, shl);
+    gen_shrd(cpu_gpr[rt][1], cpu_gpr[ra][0], cpu_gpr[ra][1], shr, shl);
+    tcg_gen_shr_tl(cpu_gpr[rt][0], cpu_gpr[ra][0], shr);
+
+    tcg_temp_free(shl);
+    tcg_temp_free(shr);
+    return NO_EXIT;
+}
+
+FOREACH_RR(rotmah, gen_helper_rotmah)
+FOREACH_RI7_ADJ(rotmahi, gen_helper_rotmah, imm &= 0x1f; imm |= imm << 16)
+
+static void gen_rotma(TCGv out, TCGv a, TCGv b)
+{
+    TCGv shr = tcg_temp_new();
+    TCGv max = tcg_temp_new();
+
+    /* Unlike the other shift operations, we're always replicating the
+       most significant bit, which means we can simply bound the shift
+       count by 31.  */
+    tcg_gen_neg_tl(shr, b);
+    tcg_gen_shli_tl(max, shr, 32 - 6);
+    tcg_gen_sari_tl(max, max, 31);
+    tcg_gen_or_tl(shr, shr, max);
+    tcg_gen_andi_tl(shr, shr, 31);
+
+    tcg_gen_sar_tl(out, a, shr);
+
+    tcg_temp_free(shr);
+    tcg_temp_free(max);
+}
+
+FOREACH_RR(rotma, gen_rotma)
+
+static ExitStatus insn_rotmai(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI7;
+
+    imm = -imm & 0x3f;
+    if (imm > 31) {
+        imm = 31;
+    }
+    tcg_gen_shri_tl(cpu_gpr[rt][0], cpu_gpr[ra][0], imm);
+    tcg_gen_shri_tl(cpu_gpr[rt][1], cpu_gpr[ra][1], imm);
+    tcg_gen_shri_tl(cpu_gpr[rt][2], cpu_gpr[ra][2], imm);
+    tcg_gen_shri_tl(cpu_gpr[rt][3], cpu_gpr[ra][3], imm);
+    return NO_EXIT;
+}
 
 /* ---------------------------------------------------------------------- */
 /* Section 7: Compare, Branch, and Halt Instructions.  */
@@ -1053,37 +1639,37 @@ static InsnDescr const translate_table[0x800] = {
     INSN(0x092, RR, nor),
     INSN(0x492, RR, eqv),
 
-    // INSN(0x0be, RR, shlh),
-    // INSN(0x0fe, RR, shlhi),
-    // INSN(0x0b6, RR, shl),
-    // INSN(0x0f6, RR, shli),
-    // INSN(0x3b6, RR, shlqbi),
-    // INSN(0x3f6, RR, shlqbii),
-    // INSN(0x3be, RR, shlqby),
-    // INSN(0x3fe, RR, shlqbyi),
-    // INSN(0x39e, RR, shlqbybi),
-    // INSN(0x0b8, RR, roth),
-    // INSN(0x0f8, RR, rothi),
-    // INSN(0x0b0, RR, rot),
-    // INSN(0x0f0, RR, roti),
-    // INSN(0x3b8, RR, rotqby),
-    // INSN(0x3f8, RR, rotqbyi),
-    // INSN(0x398, RR, rotqbybi),
-    // INSN(0x3b0, RR, rotqbi),
-    // INSN(0x3f0, RR, rotqbii),
-    // INSN(0x0ba, RR, rothm),
-    // INSN(0x0fa, RR, rothmi),
-    // INSN(0x0b2, RR, rotm),
-    // INSN(0x0f2, RR, rotmi),
-    // INSN(0x3ba, RR, rotqmby),
-    // INSN(0x3fa, RR, rotqmbyi),
-    // INSN(0x39a, RR, rotqmbybi),
-    // INSN(0x3b2, RR, rotqmbi),
-    // INSN(0x3f2, RR, rotqmbii),
-    // INSN(0x0bc, RR, rotmah),
-    // INSN(0x0fc, RR, rotmahi),
-    // INSN(0x0b4, RR, rotma),
-    // INSN(0x0f4, RR, rotmai),
+    INSN(0x0be, RR, shlh),
+    INSN(0x0fe, RR, shlhi),
+    INSN(0x0b6, RR, shl),
+    INSN(0x0f6, RR, shli),
+    INSN(0x3b6, RR, shlqbi),
+    INSN(0x3f6, RR, shlqbii),
+    INSN(0x3be, RR, shlqby),
+    INSN(0x3fe, RR, shlqbyi),
+    INSN(0x39e, RR, shlqbybi),
+    INSN(0x0b8, RR, roth),
+    INSN(0x0f8, RR, rothi),
+    INSN(0x0b0, RR, rot),
+    INSN(0x0f0, RR, roti),
+    INSN(0x3b8, RR, rotqby),
+    INSN(0x3f8, RR, rotqbyi),
+    INSN(0x398, RR, rotqbybi),
+    INSN(0x3b0, RR, rotqbi),
+    INSN(0x3f0, RR, rotqbii),
+    INSN(0x0ba, RR, rothm),
+    INSN(0x0fa, RR, rothmi),
+    INSN(0x0b2, RR, rotm),
+    INSN(0x0f2, RR, rotmi),
+    INSN(0x3ba, RR, rotqmby),
+    INSN(0x3fa, RR, rotqmbyi),
+    INSN(0x39a, RR, rotqmbybi),
+    INSN(0x3b2, RR, rotqmbi),
+    INSN(0x3f2, RR, rotqmbii),
+    INSN(0x0bc, RR, rotmah),
+    INSN(0x0fc, RR, rotmahi),
+    INSN(0x0b4, RR, rotma),
+    INSN(0x0f4, RR, rotmai),
 
     // INSN(0x7b0, RR, heq),
     // INSN(0x2b0, RR, hgt),
