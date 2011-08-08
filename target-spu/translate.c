@@ -777,6 +777,32 @@ FOREACH_RR(avgb, gen_helper_avgb)
 FOREACH_RR(absdb, gen_helper_absdb)
 FOREACH_RR(sumb, gen_helper_sumb)
 
+static void gen_xsbh(TCGv out, TCGv in)
+{
+    TCGv temp = tcg_temp_new();
+
+    tcg_gen_ext8s_tl(temp, in);
+    tcg_gen_shli_tl(out, in, 8);
+    tcg_gen_sari_tl(out, out, 8);
+    tcg_gen_deposit_tl(out, out, temp, 0, 16);
+
+    tcg_temp_free(temp);
+}
+
+FOREACH_RR1(xsbh, gen_xsbh)
+FOREACH_RR1(xshw, tcg_gen_ext16s_tl)
+
+static ExitStatus insn_xswd(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RR1;
+
+    tcg_gen_sari_tl(cpu_gpr[rt][0], cpu_gpr[ra][1], 31);
+    tcg_gen_mov_tl(cpu_gpr[rt][1], cpu_gpr[ra][1]);
+    tcg_gen_sari_tl(cpu_gpr[rt][2], cpu_gpr[ra][3], 31);
+    tcg_gen_mov_tl(cpu_gpr[rt][3], cpu_gpr[ra][3]);
+    return NO_EXIT;
+}
+
 /* ---------------------------------------------------------------------- */
 /* Section 6: Shift and Rotate Instructions.  */
 
@@ -938,9 +964,9 @@ static InsnDescr const translate_table[0x800] = {
     INSN(0x1a6, RR, avgb),
     INSN(0x0a6, RR, absdb),
     INSN(0x4a6, RR, sumb),
-    // INSN(0x56c, RR, xsbh),
-    // INSN(0x55c, RR, xshw),
-    // INSN(0x54c, RR, xswd),
+    INSN(0x56c, RR, xsbh),
+    INSN(0x55c, RR, xshw),
+    INSN(0x54c, RR, xswd),
     // INSN(0x182, RR, and),
     // INSN(0x582, RR, andc),
     // INSN(0x082, RR, or),
