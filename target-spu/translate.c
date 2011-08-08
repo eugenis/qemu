@@ -837,6 +837,48 @@ FOREACH_RR(nand, tcg_gen_nand_tl)
 FOREACH_RR(nor, tcg_gen_nor_tl)
 FOREACH_RR(eqv, tcg_gen_eqv_tl)
 
+static void gen_selb(TCGv out, TCGv a, TCGv b, TCGv c)
+{
+    TCGv temp = tcg_temp_new();
+
+    tcg_gen_and_tl(temp, b, c);
+    tcg_gen_andc_tl(out, a, c);
+    tcg_gen_or_tl(out, out, temp);
+
+    tcg_temp_free(temp);
+}
+
+FOREACH_RRR(selb, gen_selb)
+
+static ExitStatus insn_shufb(DisassContext *ctx, uint32_t insn)
+{
+    TCGv_ptr pt, pa, pb, pc;
+    DISASS_RRR;
+
+    /* The only way to avoid the global state change is to pass three
+       complete vectors to a function and return an entire vector.
+       Which we cannot do with TCG.  Pass pointers to the vectors instead.  */
+    /* ??? We could get away with just passing INSN as a constant and
+       re-extracting the register numbers in the helper.  That would be
+       more efficient on the TCG side.  */
+    pt = tcg_temp_new_ptr();
+    pa = tcg_temp_new_ptr();
+    pb = tcg_temp_new_ptr();
+    pc = tcg_temp_new_ptr();
+    tcg_gen_addi_ptr(pt, cpu_env, rt * 16);
+    tcg_gen_addi_ptr(pt, cpu_env, ra * 16);
+    tcg_gen_addi_ptr(pt, cpu_env, rb * 16);
+    tcg_gen_addi_ptr(pt, cpu_env, rc * 16);
+
+    gen_helper_shufb(pt, pa, pb, pc);
+
+    tcg_temp_free_ptr(pt);
+    tcg_temp_free_ptr(pa);
+    tcg_temp_free_ptr(pb);
+    tcg_temp_free_ptr(pc);
+    return NO_EXIT;
+}
+
 /* ---------------------------------------------------------------------- */
 /* Section 6: Shift and Rotate Instructions.  */
 
@@ -886,8 +928,8 @@ typedef struct {
 
 static InsnDescr const translate_table[0x800] = {
     /* RRR Instruction Format (4-bit op).  */
-    // INSN(0x800, RRR, selb),
-    // INSN(0xb00, RRR, shufb),
+    INSN(0x800, RRR, selb),
+    INSN(0xb00, RRR, shufb),
     INSN(0xc00, RRR, mpya),
     // INSN(0xd00, RRR, fnms),
     // INSN(0xe00, RRR, fma),

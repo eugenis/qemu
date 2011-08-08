@@ -25,6 +25,16 @@
 #include "exec/helper-proto.h"
 
 
+/* Note that while the words in the register file are stored in the
+   correct memory order, the actual bytes are stored in host memory
+   order.  Xor BYTE_SWAP with a byte index into the register file to
+   get the bytes in target memory ordering.  */
+#ifdef HOST_WORDS_BIGENDIAN
+# define REG_BYTE_SWAP 0
+#else
+# define REG_BYTE_SWAP 3
+#endif
+
 void QEMU_NORETURN helper_debug(CPUSPUState *env)
 {
     SPUCPU *cpu = spu_env_get_cpu(env);
@@ -153,6 +163,29 @@ static inline uint32_t sumb_1(uint32_t val)
 uint32_t helper_sumb(uint32_t a, uint32_t b)
 {
     return (sumb_1(b) << 16) + sumb_1(a);
+}
+
+void helper_shufb(void *vt, void *va, void *vb, void *vc)
+{
+    uint8_t *pa = va, *pb = vb, *pc = vc;
+    uint8_t temp[16];
+    unsigned i;
+
+    for (i = 0; i < 16; ++i) {
+        uint8_t val, sel = pc[i ^ REG_BYTE_SWAP];
+        if ((sel & 0xc0) == 0x80) {
+            val = 0;
+        } else if ((sel & 0xe0) == 0xc0) {
+            val = 0xff;
+        } else if ((sel & 0xe0) == 0xe0) {
+            val = 0x80;
+        } else {
+            val = (sel & 0x10 ? pb : pa)[(sel & 0xf) ^ REG_BYTE_SWAP];
+        }
+        temp[i ^ REG_BYTE_SWAP] = val;
+    }
+
+    memcpy(vt, temp, 16);
 }
 
 void tlb_fill(CPUState *cs, target_ulong addr, int is_write,
