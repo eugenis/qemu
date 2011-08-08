@@ -773,6 +773,10 @@ static ExitStatus insn_gb(DisassContext *ctx, uint32_t insn)
     return NO_EXIT;
 }
 
+FOREACH_RR(avgb, gen_helper_avgb)
+FOREACH_RR(absdb, gen_helper_absdb)
+FOREACH_RR(sumb, gen_helper_sumb)
+
 /* ---------------------------------------------------------------------- */
 /* Section 6: Shift and Rotate Instructions.  */
 
@@ -931,9 +935,9 @@ static InsnDescr const translate_table[0x800] = {
     INSN(0x364, RR, gbb),
     INSN(0x362, RR, gbh),
     INSN(0x360, RR, gb),
-    // INSN(0x1a6, RR, avgb),
-    // INSN(0x0a6, RR, absdb),
-    // INSN(0x4a6, RR, sumb),
+    INSN(0x1a6, RR, avgb),
+    INSN(0x0a6, RR, absdb),
+    INSN(0x4a6, RR, sumb),
     // INSN(0x56c, RR, xsbh),
     // INSN(0x55c, RR, xshw),
     // INSN(0x54c, RR, xswd),
