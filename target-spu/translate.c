@@ -1471,6 +1471,116 @@ static ExitStatus insn_rotmai(DisassContext *ctx, uint32_t insn)
 /* ---------------------------------------------------------------------- */
 /* Section 7: Compare, Branch, and Halt Instructions.  */
 
+static ExitStatus gen_halt_cond(DisassContext *ctx, TCGCond c, TCGv a, TCGv b)
+{
+    TCGLabel *lab_over = gen_new_label();
+    TCGv temp;
+
+    tcg_gen_brcond_tl(tcg_invert_cond(c), a, b, lab_over);
+
+    tcg_gen_movi_tl(cpu_pc, ctx->pc + 4);
+
+    temp = tcg_const_tl(0);
+    gen_helper_stop(cpu_env, temp);
+    tcg_temp_free(temp);
+
+    gen_set_label(lab_over);
+    return NO_EXIT;
+}
+
+static ExitStatus insn_heq(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RR;
+
+    (void)rt;
+    return gen_halt_cond(ctx, TCG_COND_EQ, cpu_gpr[ra][0], cpu_gpr[rb][0]);
+}
+
+static ExitStatus insn_heqi(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI10;
+
+    (void)rt;
+    return gen_halt_cond(ctx, TCG_COND_EQ, cpu_gpr[ra][0], tcg_const_tl(imm));
+}
+
+static ExitStatus insn_hgt(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RR;
+
+    (void)rt;
+    return gen_halt_cond(ctx, TCG_COND_GT, cpu_gpr[ra][0], cpu_gpr[rb][0]);
+}
+
+static ExitStatus insn_hgti(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI10;
+
+    (void)rt;
+    return gen_halt_cond(ctx, TCG_COND_GT, cpu_gpr[ra][0], tcg_const_tl(imm));
+}
+
+static ExitStatus insn_hlgt(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RR;
+
+    (void)rt;
+    return gen_halt_cond(ctx, TCG_COND_GTU, cpu_gpr[ra][0], cpu_gpr[rb][0]);
+}
+
+static ExitStatus insn_hlgti(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI10;
+
+    (void)rt;
+    return gen_halt_cond(ctx, TCG_COND_GTU, cpu_gpr[ra][0], tcg_const_tl(imm));
+}
+
+FOREACH_RR(ceqb, gen_helper_ceqb)
+FOREACH_RI10_ADJ(ceqbi, gen_helper_ceqb, imm &= 0xff; imm *= 0x01010101)
+
+FOREACH_RR(ceqh, gen_helper_ceqh)
+FOREACH_RI10_ADJ(ceqhi, gen_helper_ceqh, imm &= 0xffff; imm |= imm << 16)
+
+static void gen_ceq(TCGv out, TCGv a, TCGv b)
+{
+    tcg_gen_setcond_tl(TCG_COND_EQ, out, a, b);
+    tcg_gen_neg_tl(out, out);
+}
+
+FOREACH_RR(ceq, gen_ceq)
+FOREACH_RI10(ceqi, gen_ceq)
+
+FOREACH_RR(cgtb, gen_helper_cgtb)
+FOREACH_RI10_ADJ(cgtbi, gen_helper_cgtb, imm &=0xff; imm *= 0x01010101)
+
+FOREACH_RR(cgth, gen_helper_cgth)
+FOREACH_RI10_ADJ(cgthi, gen_helper_cgth, imm &= 0xffff; imm |= imm << 16)
+
+static void gen_cgt(TCGv out, TCGv a, TCGv b)
+{
+    tcg_gen_setcond_tl(TCG_COND_GT, out, a, b);
+    tcg_gen_neg_tl(out, out);
+}
+
+FOREACH_RR(cgt, gen_cgt)
+FOREACH_RI10(cgti, gen_cgt)
+
+FOREACH_RR(clgtb, gen_helper_clgtb)
+FOREACH_RI10_ADJ(clgtbi, gen_helper_clgtb, imm &=0xff; imm *= 0x01010101)
+
+FOREACH_RR(clgth, gen_helper_clgth)
+FOREACH_RI10_ADJ(clgthi, gen_helper_clgth, imm &=0xffff;imm |= imm << 16)
+
+static void gen_clgt(TCGv out, TCGv a, TCGv b)
+{
+    tcg_gen_setcond_tl(TCG_COND_GTU, out, a, b);
+    tcg_gen_neg_tl(out, out);
+}
+
+FOREACH_RR(clgt, gen_clgt)
+FOREACH_RI10(clgti, gen_clgt)
+
 /* ---------------------------------------------------------------------- */
 /* Section 8: Hint for Branch Instructions.  */
 
@@ -1548,18 +1658,18 @@ static InsnDescr const translate_table[0x800] = {
     INSN(0x450, RI10, xorhi),
     INSN(0x440, RI10, xori),
 
-    // INSN(0x7f0, RI10, heqi),
-    // INSN(0x4f0, RI10, hgti),
-    // INSN(0x5f0, RI10, hlgti),
-    // INSN(0x7e0, RI10, ceqbi),
-    // INSN(0x7d0, RI10, ceqhi),
-    // INSN(0x7c0, RI10, ceqi),
-    // INSN(0x4e0, RI10, cgtbi),
-    // INSN(0x4d0, RI10, cgthi),
-    // INSN(0x4c0, RI10, cgti),
-    // INSN(0x5e0, RI10, clgtbi),
-    // INSN(0x5d0, RI10, clgthi),
-    // INSN(0x5c0, RI10, clgti),
+    INSN(0x7f0, RI10, heqi),
+    INSN(0x4f0, RI10, hgti),
+    INSN(0x5f0, RI10, hlgti),
+    INSN(0x7e0, RI10, ceqbi),
+    INSN(0x7d0, RI10, ceqhi),
+    INSN(0x7c0, RI10, ceqi),
+    INSN(0x4e0, RI10, cgtbi),
+    INSN(0x4d0, RI10, cgthi),
+    INSN(0x4c0, RI10, cgti),
+    INSN(0x5e0, RI10, clgtbi),
+    INSN(0x5d0, RI10, clgthi),
+    INSN(0x5c0, RI10, clgti),
 
     /* RI16 Instruction Format (9-bit op).  */
     INSN(0x308, RI16, lqa),
@@ -1671,18 +1781,18 @@ static InsnDescr const translate_table[0x800] = {
     INSN(0x0b4, RR, rotma),
     INSN(0x0f4, RR, rotmai),
 
-    // INSN(0x7b0, RR, heq),
-    // INSN(0x2b0, RR, hgt),
-    // INSN(0x5b0, RR, hlgt),
-    // INSN(0x7a0, RR, ceqb),
-    // INSN(0x790, RR, ceqh),
-    // INSN(0x780, RR, ceq),
-    // INSN(0x4a0, RR, cgtb),
-    // INSN(0x490, RR, cgth),
-    // INSN(0x480, RR, cgt),
-    // INSN(0x5a0, RR, clgtb),
-    // INSN(0x590, RR, clgth),
-    // INSN(0x580, RR, clgt),
+    INSN(0x7b0, RR, heq),
+    INSN(0x2b0, RR, hgt),
+    INSN(0x5b0, RR, hlgt),
+    INSN(0x7a0, RR, ceqb),
+    INSN(0x790, RR, ceqh),
+    INSN(0x780, RR, ceq),
+    INSN(0x4a0, RR, cgtb),
+    INSN(0x490, RR, cgth),
+    INSN(0x480, RR, cgt),
+    INSN(0x5a0, RR, clgtb),
+    INSN(0x590, RR, clgth),
+    INSN(0x580, RR, clgt),
 
     // INSN(0x350, RR, bi),
     // INSN(0x354, RR, iret),
