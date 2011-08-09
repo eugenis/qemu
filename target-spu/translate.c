@@ -60,7 +60,6 @@ typedef enum {
 /* Global registers.  */
 static TCGv_ptr cpu_env;
 static TCGv cpu_pc;
-static TCGv cpu_srr0;
 static TCGv cpu_gpr[128][4];
 
 /* register names */
@@ -469,7 +468,7 @@ static void gen_addx(TCGv out, TCGv a, TCGv b)
     tcg_gen_andi_tl(tmp, out, 1);
     tcg_gen_add_tl(tmp, tmp, a);
     tcg_gen_add_tl(out, tmp, b);
-    
+
     tcg_temp_free(tmp);
 }
 
@@ -512,7 +511,7 @@ static void gen_sfx(TCGv out, TCGv a, TCGv b)
 
     /* The description in the manual is convoluted, but it's the same as
        the PowerPC (low, ca) = ~ra + rb + ca.  */
-    
+
     tcg_gen_not_tl(tmp, a);
     tcg_gen_andi_tl(lsb, out, 1);
     tcg_gen_add_tl(tmp, tmp, b);
@@ -1581,6 +1580,247 @@ static void gen_clgt(TCGv out, TCGv a, TCGv b)
 FOREACH_RR(clgt, gen_clgt)
 FOREACH_RI10(clgti, gen_clgt)
 
+static bool use_goto_tb(DisassContext *ctx, uint32_t dest)
+{
+    /* Check for the dest on the same page as the start of the TB.  We
+       also want to suppress goto_tb in the case of single-steping and IO.  */
+    return (((ctx->tb->pc ^ dest) & TARGET_PAGE_MASK) == 0
+            && !ctx->singlestep
+            && !(ctx->tb->cflags & CF_LAST_IO));
+}
+
+static void gen_set_link(DisassContext *ctx, unsigned rt)
+{
+    tcg_gen_movi_tl(cpu_gpr[rt][0], (ctx->pc + 4) & ctx->lslr);
+    tcg_gen_movi_tl(cpu_gpr[rt][1], 0);
+    tcg_gen_movi_tl(cpu_gpr[rt][2], 0);
+    tcg_gen_movi_tl(cpu_gpr[rt][3], 0);
+}
+
+static ExitStatus gen_bdirect(DisassContext *ctx, uint32_t dest)
+{
+    if (use_goto_tb(ctx, dest)) {
+        tcg_gen_goto_tb(0);
+        tcg_gen_movi_tl(cpu_pc, dest);
+        tcg_gen_exit_tb((tcg_target_long)ctx->tb);
+        return EXIT_GOTO_TB;
+    } else {
+        tcg_gen_movi_tl(cpu_pc, dest);
+        return EXIT_PC_UPDATED;
+    }
+}
+
+static ExitStatus gen_bindirect(DisassContext *ctx, TCGv dest, int enadis)
+{
+    if (enadis != 0) {
+        TCGv c = tcg_const_tl(enadis > 0);
+        tcg_gen_st32_tl(c, cpu_env, offsetof(CPUSPUState, inte));
+        tcg_temp_free(c);
+    }
+    tcg_gen_andi_tl(cpu_pc, dest, ctx->lslr & -4);
+    return EXIT_PC_UPDATED;
+}
+
+static ExitStatus gen_bcond_dir(DisassContext *ctx, TCGCond cond,
+                                TCGv cmp, uint32_t dest)
+{
+    if (use_goto_tb(ctx, dest)) {
+        TCGLabel *lab_true = gen_new_label();
+        tcg_gen_brcondi_tl(cond, cmp, 0, lab_true);
+
+        tcg_gen_goto_tb(0);
+        tcg_gen_movi_tl(cpu_pc, (ctx->pc + 4) & ctx->lslr);
+        tcg_gen_exit_tb((tcg_target_long)ctx->tb);
+
+        gen_set_label(lab_true);
+        tcg_gen_goto_tb(1);
+        tcg_gen_movi_tl(cpu_pc, dest);
+        tcg_gen_exit_tb((tcg_target_long)ctx->tb + 1);
+
+        return EXIT_GOTO_TB;
+    } else {
+        TCGv zero = tcg_const_tl(0);
+        TCGv pc_f = tcg_const_tl((ctx->pc + 4) & ctx->lslr);
+        TCGv pc_t = tcg_const_tl(dest);
+
+        tcg_gen_movcond_tl(cond, cpu_pc, cmp, zero, pc_t, pc_f);
+
+        tcg_temp_free(zero);
+        tcg_temp_free(pc_f);
+        tcg_temp_free(pc_t);
+        return EXIT_PC_UPDATED;
+    }
+}
+
+static ExitStatus gen_bcond_ind(DisassContext *ctx, TCGCond cond,
+                                TCGv cmp, TCGv dest)
+{
+    TCGv zero = tcg_const_tl(0);
+    TCGv pc_f = tcg_const_tl((ctx->pc + 4) & ctx->lslr);
+    TCGv pc_t = tcg_temp_new();
+
+    tcg_gen_andi_tl(pc_t, dest, ctx->lslr & -4);
+    tcg_gen_movcond_tl(cond, cpu_pc, cmp, zero, pc_t, pc_f);
+
+    tcg_temp_free(zero);
+    tcg_temp_free(pc_f);
+    tcg_temp_free(pc_t);
+    return EXIT_PC_UPDATED;
+}
+
+static ExitStatus insn_br(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_I16;
+    return gen_bdirect(ctx, (ctx->pc + imm * 4) & ctx->lslr);
+}
+
+static ExitStatus insn_bra(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_I16;
+    return gen_bdirect(ctx, (imm * 4) & ctx->lslr);
+}
+
+static ExitStatus insn_brsl(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI16;
+
+    gen_set_link(ctx, rt);
+    return gen_bdirect(ctx, (ctx->pc + imm * 4) & ctx->lslr);
+}
+
+static ExitStatus insn_brasl(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI16;
+
+    gen_set_link(ctx, rt);
+    return gen_bdirect(ctx, (imm * 4) & ctx->lslr);
+}
+
+static ExitStatus insn_bi(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RR_BIR;
+    return gen_bindirect(ctx, cpu_gpr[ra][0], enadis);
+}
+
+static ExitStatus insn_iret(DisassContext *ctx, uint32_t insn)
+{
+    TCGv srr0;
+    DISASS_RR_BIR;
+
+    (void)ra;
+    srr0 = tcg_temp_new();
+    tcg_gen_ld_tl(srr0, cpu_env, offsetof(CPUSPUState, srr0));
+    return gen_bindirect(ctx, srr0, enadis);
+}
+
+static ExitStatus insn_bisled(DisassContext *ctx, uint32_t insn)
+{
+    TCGv temp;
+    TCGLabel *lab_over;
+    DISASS_RR_BIRR;
+
+    /* The link always gets set, whether we branch or not.  */
+    gen_set_link(ctx, rt);
+
+    /* Never take interrupts while single-stepping.  */
+    if (ctx->singlestep) {
+        return NO_EXIT;
+    }
+
+    temp = tcg_temp_new();
+    lab_over = gen_new_label();
+
+    tcg_gen_ld32u_tl(temp, cpu_env,
+                     offsetof(CPUState, interrupt_request)
+                     - offsetof(SPUCPU, env));
+    tcg_gen_brcondi_tl(TCG_COND_EQ, temp, 0, lab_over);
+    tcg_temp_free(temp);
+
+    gen_bindirect(ctx, cpu_gpr[ra][0], enadis);
+    tcg_gen_exit_tb(0);
+
+    gen_set_label(lab_over);
+    return NO_EXIT;
+}
+
+static ExitStatus insn_bisl(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RR_BIRR;
+
+    gen_set_link(ctx, rt);
+    return gen_bindirect(ctx, cpu_gpr[ra][0], enadis);
+}
+
+static ExitStatus insn_brnz(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI16;
+
+    return gen_bcond_dir(ctx, TCG_COND_NE, cpu_gpr[rt][0],
+                         (ctx->pc + imm * 4) & ctx->lslr);
+}
+
+static ExitStatus insn_brz(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI16;
+
+    return gen_bcond_dir(ctx, TCG_COND_EQ, cpu_gpr[rt][0],
+                         (ctx->pc + imm * 4) & ctx->lslr);
+}
+
+static ExitStatus insn_brhnz(DisassContext *ctx, uint32_t insn)
+{
+    TCGv temp;
+    DISASS_RI16;
+
+    temp = tcg_temp_new();
+    tcg_gen_andi_tl(temp, cpu_gpr[rt][0], 0xffff);
+    return gen_bcond_dir(ctx, TCG_COND_NE, temp,
+                         (ctx->pc + imm * 4) & ctx->lslr);
+}
+
+static ExitStatus insn_brhz(DisassContext *ctx, uint32_t insn)
+{
+    TCGv temp;
+    DISASS_RI16;
+
+    temp = tcg_temp_new();
+    tcg_gen_andi_tl(temp, cpu_gpr[rt][0], 0xffff);
+    return gen_bcond_dir(ctx, TCG_COND_EQ, temp,
+                         (ctx->pc + imm * 4) & ctx->lslr);
+}
+
+static ExitStatus insn_biz(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RR_BIRR;
+    return gen_bcond_ind(ctx, TCG_COND_EQ, cpu_gpr[rt][0], cpu_gpr[ra][0]);
+}
+
+static ExitStatus insn_binz(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RR_BIRR;
+    return gen_bcond_ind(ctx, TCG_COND_NE, cpu_gpr[rt][0], cpu_gpr[ra][0]);
+}
+
+static ExitStatus insn_bihz(DisassContext *ctx, uint32_t insn)
+{
+    TCGv temp;
+    DISASS_RR_BIRR;
+
+    temp = tcg_temp_new();
+    tcg_gen_andi_tl(temp, cpu_gpr[rt][0], 0xffff);
+    return gen_bcond_ind(ctx, TCG_COND_EQ, temp, cpu_gpr[ra][0]);
+}
+
+static ExitStatus insn_bihnz(DisassContext *ctx, uint32_t insn)
+{
+    TCGv temp;
+    DISASS_RR_BIRR;
+
+    temp = tcg_temp_new();
+    tcg_gen_andi_tl(temp, cpu_gpr[rt][0], 0xffff);
+    return gen_bcond_ind(ctx, TCG_COND_NE, temp, cpu_gpr[ra][0]);
+}
+
 /* ---------------------------------------------------------------------- */
 /* Section 8: Hint for Branch Instructions.  */
 
@@ -1683,14 +1923,14 @@ static InsnDescr const translate_table[0x800] = {
     INSN(0x608, RI16, iohl),
     INSN(0x328, RI16, fsmbi),
 
-    // INSN(0x320, RI16, br),
-    // INSN(0x300, RI16, bra),
-    // INSN(0x330, RI16, brsl),
-    // INSN(0x310, RI16, brasl),
-    // INSN(0x210, RI16, brnz),
-    // INSN(0x200, RI16, brz),
-    // INSN(0x230, RI16, brhnz),
-    // INSN(0x220, RI16, brhz),
+    INSN(0x320, RI16, br),
+    INSN(0x300, RI16, bra),
+    INSN(0x330, RI16, brsl),
+    INSN(0x310, RI16, brasl),
+    INSN(0x210, RI16, brnz),
+    INSN(0x200, RI16, brz),
+    INSN(0x230, RI16, brhnz),
+    INSN(0x220, RI16, brhz),
 
     /* RR/RI7 Instruction Format (11-bit op).  */
     INSN(0x388, RR, lqx),
@@ -1794,14 +2034,14 @@ static InsnDescr const translate_table[0x800] = {
     INSN(0x590, RR, clgth),
     INSN(0x580, RR, clgt),
 
-    // INSN(0x350, RR, bi),
-    // INSN(0x354, RR, iret),
-    // INSN(0x356, RR, bisled),
-    // INSN(0x352, RR, bisl),
-    // INSN(0x250, RR, biz),
-    // INSN(0x252, RR, binz),
-    // INSN(0x254, RR, bihz),
-    // INSN(0x256, RR, bihnz),
+    INSN(0x350, RR, bi),
+    INSN(0x354, RR, iret),
+    INSN(0x356, RR, bisled),
+    INSN(0x352, RR, bisl),
+    INSN(0x250, RR, biz),
+    INSN(0x252, RR, binz),
+    INSN(0x254, RR, bihz),
+    INSN(0x256, RR, bihnz),
 
     // INSN(0x358, RR, hbr),
 
@@ -1930,7 +2170,7 @@ void gen_intermediate_code(CPUSPUState *env, struct TranslationBlock *tb)
     do {
         tcg_gen_insn_start(ctx.pc);
         num_insns++;
-        
+
         if (unlikely(cpu_breakpoint_test(cs, ctx.pc, BP_ANY))) {
             tcg_gen_movi_tl(cpu_pc, ctx.pc);
             gen_helper_debug(cpu_env);
@@ -1993,8 +2233,6 @@ void spu_translate_init(void)
 
     cpu_env = tcg_global_reg_new_ptr(TCG_AREG0, "env");
     cpu_pc = tcg_global_mem_new(cpu_env, offsetof(CPUSPUState, pc), "pc");
-    cpu_srr0 = tcg_global_mem_new(cpu_env, offsetof(CPUSPUState, srr0),
-                                  "srr0");
 
     for (i = 0; i < 128; i++) {
         for (j = 0; j < 4; ++j) {
