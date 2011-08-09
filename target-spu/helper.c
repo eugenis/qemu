@@ -23,8 +23,12 @@
 
 int spu_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw, int mmu_idx)
 {
-    cs->exception_index = EXCP_MMFAULT;
-    return 1;
+#ifndef CONFIG_USER_ONLY
+    address &= TARGET_PAGE_MASK;
+    tlb_set_page(cs, address, address, PAGE_READ | PAGE_WRITE | PAGE_EXEC,
+                 mmu_idx, TARGET_PAGE_SIZE);
+#endif
+    return 0;
 }
 
 hwaddr spu_cpu_get_phys_page_debug(CPUState *cs, vaddr addr)

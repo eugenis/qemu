@@ -398,5 +398,6 @@ uint32_t helper_clgth(uint32_t a, uint32_t b)
 void tlb_fill(CPUState *cs, target_ulong addr, int is_write,
               int mmu_idx, uintptr_t retaddr)
 {
-    abort();
+    spu_cpu_handle_mmu_fault(cs, addr, is_write, mmu_idx);
+    /* SPU cannot memory fault.  */
 }
