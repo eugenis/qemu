@@ -191,6 +191,51 @@ uint32_t helper_sumb(uint32_t a, uint32_t b)
     return (sumb_1(b) << 16) + sumb_1(a);
 }
 
+static uint32_t const identity[4] = { 
+    0x10111213,
+    0x14151617,
+    0x18191a1b,
+    0x1c1d1e1f
+};
+
+void helper_cb(void *vt, uint32_t addr)
+{
+    uint8_t *pt = vt;
+
+    memcpy(pt, identity, 16);
+    addr &= 0xf;
+    pt[addr ^ REG_BYTE_SWAP] = 3;
+}
+
+void helper_ch(void *vt, uint32_t addr)
+{
+    uint8_t *pt = vt;
+
+    memcpy(pt, identity, 16);
+    addr &= 0xe;
+    pt[(addr + 0)  ^ REG_BYTE_SWAP] = 2;
+    pt[(addr + 1)  ^ REG_BYTE_SWAP] = 3;
+}
+
+void helper_cw(void *vt, uint32_t addr)
+{
+    uint32_t *p32 = vt;
+
+    memcpy(p32, identity, 16);
+    addr &= 0xc;
+    p32[addr / 4] = 0x00010203;
+}
+
+void helper_cd(void *vt, uint32_t addr)
+{
+    static uint32_t const cd_val[2][4] = {
+        { 0x00010203, 0x04050607, 0x18191a1b, 0x1c1d1e1f },
+        { 0x10111213, 0x14151617, 0x00010203, 0x04050607 }
+    };
+
+    memcpy(vt, &cd_val[(addr >> 3) & 1], 16);
+}
+
 void helper_shufb(void *vt, void *va, void *vb, void *vc)
 {
     uint8_t *pa = va, *pb = vb, *pc = vc;

@@ -346,6 +346,98 @@ static ExitStatus insn_stqr(DisassContext *ctx, uint32_t insn)
     return gen_storeq(gen_address_a(ctx, ctx->pc + imm * 4), cpu_gpr[rt]);
 }
 
+static ExitStatus gen_controls(void (*gen)(TCGv_ptr, TCGv), unsigned rt, TCGv addr)
+{
+    TCGv_ptr pt = tcg_temp_new_ptr();
+    tcg_gen_addi_ptr(pt, cpu_env, rt * 16);
+
+    gen(pt, addr);
+
+    tcg_temp_free(addr);
+    tcg_temp_free_ptr(pt);
+    return NO_EXIT;
+}
+
+static ExitStatus insn_cbd(DisassContext *ctx, uint32_t insn)
+{
+    TCGv addr;
+    DISASS_RI7;
+
+    addr = tcg_temp_new();
+    tcg_gen_addi_tl(addr, cpu_gpr[ra][0], imm);
+    return gen_controls(gen_helper_cb, rt, addr);
+}
+
+static ExitStatus insn_cbx(DisassContext *ctx, uint32_t insn)
+{
+    TCGv addr;
+    DISASS_RR;
+
+    addr = tcg_temp_new();
+    tcg_gen_add_tl(addr, cpu_gpr[ra][0], cpu_gpr[rb][0]);
+    return gen_controls(gen_helper_cb, rt, addr);
+}
+
+static ExitStatus insn_chd(DisassContext *ctx, uint32_t insn)
+{
+    TCGv addr;
+    DISASS_RI7;
+
+    addr = tcg_temp_new();
+    tcg_gen_addi_tl(addr, cpu_gpr[ra][0], imm);
+    return gen_controls(gen_helper_ch, rt, addr);
+}
+
+static ExitStatus insn_chx(DisassContext *ctx, uint32_t insn)
+{
+    TCGv addr;
+    DISASS_RR;
+
+    addr = tcg_temp_new();
+    tcg_gen_add_tl(addr, cpu_gpr[ra][0], cpu_gpr[rb][0]);
+    return gen_controls(gen_helper_ch, rt, addr);
+}
+
+static ExitStatus insn_cwd(DisassContext *ctx, uint32_t insn)
+{
+    TCGv addr;
+    DISASS_RI7;
+
+    addr = tcg_temp_new();
+    tcg_gen_addi_tl(addr, cpu_gpr[ra][0], imm);
+    return gen_controls(gen_helper_cw, rt, addr);
+}
+
+static ExitStatus insn_cwx(DisassContext *ctx, uint32_t insn)
+{
+    TCGv addr;
+    DISASS_RR;
+
+    addr = tcg_temp_new();
+    tcg_gen_add_tl(addr, cpu_gpr[ra][0], cpu_gpr[rb][0]);
+    return gen_controls(gen_helper_cw, rt, addr);
+}
+
+static ExitStatus insn_cdd(DisassContext *ctx, uint32_t insn)
+{
+    TCGv addr;
+    DISASS_RI7;
+
+    addr = tcg_temp_new();
+    tcg_gen_addi_tl(addr, cpu_gpr[ra][0], imm);
+    return gen_controls(gen_helper_cd, rt, addr);
+}
+
+static ExitStatus insn_cdx(DisassContext *ctx, uint32_t insn)
+{
+    TCGv addr;
+    DISASS_RR;
+
+    addr = tcg_temp_new();
+    tcg_gen_add_tl(addr, cpu_gpr[ra][0], cpu_gpr[rb][0]);
+    return gen_controls(gen_helper_cd, rt, addr);
+}
+
 /* ---------------------------------------------------------------------- */
 /* Section 3: Constant Formation Instructions.  */
 
@@ -2062,14 +2154,14 @@ static InsnDescr const translate_table[0x800] = {
     INSN(0x388, RR, lqx),
     INSN(0x288, RR, stqx),
 
-    // INSN(0x3e8, RR, cbd),
-    // INSN(0x3a8, RR, cbx),
-    // INSN(0x3ea, RR, chd),
-    // INSN(0x3aa, RR, chx),
-    // INSN(0x3ec, RR, cwd),
-    // INSN(0x3ac, RR, cwx),
-    // INSN(0x3ee, RR, cdd),
-    // INSN(0x3ae, RR, cdx),
+    INSN(0x3e8, RR, cbd),
+    INSN(0x3a8, RR, cbx),
+    INSN(0x3ea, RR, chd),
+    INSN(0x3aa, RR, chx),
+    INSN(0x3ec, RR, cwd),
+    INSN(0x3ac, RR, cwx),
+    INSN(0x3ee, RR, cdd),
+    INSN(0x3ae, RR, cdx),
 
     INSN(0x190, RR, ah),
     INSN(0x180, RR, a),
