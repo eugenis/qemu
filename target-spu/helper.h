@@ -6,6 +6,10 @@ DEF_HELPER_3(shlqby, void, ptr, ptr, i32)
 DEF_HELPER_3(rotqby, void, ptr, ptr, i32)
 DEF_HELPER_3(rotqmby, void, ptr, ptr, i32)
 
+DEF_HELPER_FLAGS_2(rdch, TCG_CALL_NO_WG, i32, env, i32)
+DEF_HELPER_FLAGS_2(rchcnt, TCG_CALL_NO_WG, i32, env, i32)
+DEF_HELPER_FLAGS_3(wrch, TCG_CALL_NO_WG, void, env, i32, i32)
+
 DEF_HELPER_FLAGS_1(clz, TCG_CALL_NO_RWG_SE, i32, i32)
 DEF_HELPER_FLAGS_1(cntb, TCG_CALL_NO_RWG_SE, i32, i32)
 DEF_HELPER_FLAGS_1(fsmb, TCG_CALL_NO_RWG_SE, i32, i32)

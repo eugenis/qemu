@@ -23,6 +23,7 @@
 #include "qemu/host-utils.h"
 #include "fpu/softfloat.h"
 #include "exec/helper-proto.h"
+#include "exec/exec-all.h"
 #include "sysemu/sysemu.h"
 
 
@@ -58,6 +59,17 @@ void helper_stop(CPUSPUState *env, int signal)
 #endif
     cpu_loop_exit(cs);
 }
+
+/* This may be called from any of the helpers to set up EXCEPTION_INDEX.  */
+#define dynamic_excp(excp, error)               \
+do {                                            \
+    SPUCPU *cpu = spu_env_get_cpu(env);         \
+    CPUState *cs = CPU(cpu);                    \
+    cs->exception_index = excp;                 \
+    env->error_code = error;                    \
+    cpu_loop_exit_restore(cs, GETPC());         \
+} while (0)
+
 
 uint32_t helper_clz(uint32_t arg)
 {
@@ -393,6 +405,24 @@ uint32_t helper_clgth(uint32_t a, uint32_t b)
     ret |= (ah > bh ? 0xffff0000 : 0);
 
     return ret;
+}
+
+uint32_t helper_rdch(CPUSPUState *env, uint32_t ch)
+{
+    /* ??? No defined channels at the moment.  */
+    dynamic_excp(EXCP_RDCH, ch);
+}
+
+uint32_t helper_rchcnt(CPUSPUState *env, uint32_t ch)
+{
+    /* ??? No defined channels at the moment.  */
+    return 0;
+}
+
+void helper_wrch(CPUSPUState *env, uint32_t ch, uint32_t val)
+{
+    /* ??? No defined channels at the moment.  */
+    dynamic_excp(EXCP_WRCH, ch);
 }
 
 void tlb_fill(CPUState *cs, target_ulong addr, int is_write,

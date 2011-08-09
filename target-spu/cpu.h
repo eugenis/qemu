@@ -62,7 +62,9 @@ typedef struct CPUSPUState {
 enum {
     EXCP_RESET,
     EXCP_ILLOPC,
-    EXCP_MMFAULT
+    EXCP_MMFAULT,
+    EXCP_RDCH,
+    EXCP_WRCH,
 };
 
 #ifndef CONFIG_USER_ONLY
