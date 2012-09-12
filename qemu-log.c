@@ -20,74 +20,99 @@
 #include "qemu-common.h"
 #include "qemu-log.h"
 
+#include <sys/syscall.h>
+
 #ifdef WIN32
 static const char *logfilename = "qemu.log";
 #else
 static const char *logfilename = "/tmp/qemu.log";
 #endif
-FILE *qemu_logfile;
+
+static bool qemu_log_enabled1;
+static __thread FILE *qemu_logfile1;
+static __thread char logfile_buf[4096];
 int qemu_loglevel;
-static int log_append = 0;
+
+static int gettid(void)
+{
+    return syscall(SYS_gettid);
+}
+
+FILE *qemu_logfile0(void)
+{
+    FILE *f;
+
+    if (!qemu_log_enabled1) {
+        return NULL;
+    }
+    f = qemu_logfile1;
+    if (f == NULL) {
+        int len = strlen(logfilename) + 7;
+        char *name = alloca(len);
+        snprintf(name, len, "%s.%d", logfilename, gettid());
+
+        qemu_logfile1 = f = fopen(name, "w");
+        if (f == NULL) {
+            perror(name);
+            _exit(1);
+        }
+        /* Must avoid mmap() usage of glibc by setting a buffer "by hand".  */
+        setvbuf(f, logfile_buf, _IOLBF, sizeof(logfile_buf));
+    }
+    return f;
+}
+
+bool qemu_log_enabled(void)
+{
+    return qemu_log_enabled1;
+}
 
 void qemu_log(const char *fmt, ...)
 {
-    va_list ap;
-
-    va_start(ap, fmt);
-    if (qemu_logfile) {
-        vfprintf(qemu_logfile, fmt, ap);
+    FILE *f = qemu_logfile0();
+    if (f != NULL) {
+        va_list ap;
+        va_start(ap, fmt);
+        vfprintf(f, fmt, ap);
+        va_end(ap);
     }
-    va_end(ap);
 }
 
 void qemu_log_mask(int mask, const char *fmt, ...)
 {
-    va_list ap;
-
-    va_start(ap, fmt);
-    if ((qemu_loglevel & mask) && qemu_logfile) {
-        vfprintf(qemu_logfile, fmt, ap);
+    if (qemu_loglevel & mask) {
+        FILE *f = qemu_logfile0();
+        if (f != NULL) {
+            va_list ap;
+            va_start(ap, fmt);
+            vfprintf(f, fmt, ap);
+            va_end(ap);
+        }
     }
-    va_end(ap);
 }
 
 /* enable or disable low levels log */
 void qemu_set_log(int log_flags, bool use_own_buffers)
 {
     qemu_loglevel = log_flags;
-    if (qemu_loglevel && !qemu_logfile) {
-        qemu_logfile = fopen(logfilename, log_append ? "a" : "w");
-        if (!qemu_logfile) {
-            perror(logfilename);
-            _exit(1);
+    if (qemu_loglevel) {
+        qemu_log_enabled1 = true;
+    } else {
+        qemu_log_enabled1 = false;
+        if (qemu_logfile1) {
+            fclose(qemu_logfile1);
+            qemu_logfile1 = NULL;
         }
-        /* must avoid mmap() usage of glibc by setting a buffer "by hand" */
-        if (use_own_buffers) {
-            static char logfile_buf[4096];
-
-            setvbuf(qemu_logfile, logfile_buf, _IOLBF, sizeof(logfile_buf));
-        } else {
-#if defined(_WIN32)
-            /* Win32 doesn't support line-buffering, so use unbuffered output. */
-            setvbuf(qemu_logfile, NULL, _IONBF, 0);
-#else
-            setvbuf(qemu_logfile, NULL, _IOLBF, 0);
-#endif
-            log_append = 1;
-        }
-    }
-    if (!qemu_loglevel && qemu_logfile) {
-        fclose(qemu_logfile);
-        qemu_logfile = NULL;
     }
 }
 
 void cpu_set_log_filename(const char *filename)
 {
     logfilename = strdup(filename);
-    if (qemu_logfile) {
-        fclose(qemu_logfile);
-        qemu_logfile = NULL;
+    qemu_log_enabled1 = true;
+    if (qemu_logfile1) {
+        fclose(qemu_logfile1);
+        qemu_logfile1 = NULL;
     }
     cpu_set_log(qemu_loglevel);
 }
@@ -161,4 +186,35 @@ int cpu_str_to_log_mask(const char *str)
         p = p1 + 1;
     }
     return mask;
+}
+
+void qemu_log_vprintf(const char *fmt, va_list va)
+{
+    FILE *f = qemu_logfile0();
+    if (f != NULL) {
+        vfprintf(f, fmt, va);
+    }
+}
+
+void qemu_log_flush(void)
+{
+    if (qemu_logfile1) {
+        fflush(qemu_logfile1);
+    }
+}
+
+/* Close the log file */
+void qemu_log_close(void)
+{
+    if (qemu_logfile1) {
+        fclose(qemu_logfile1);
+        qemu_logfile1 = NULL;
+    }
+}
+
+/* Set up a new log file, only if none is set */
+void qemu_log_try_set_file(FILE *f)
+{
+    /* WTF.  Broken translators not understanding the rules.  */
+    abort();
 }

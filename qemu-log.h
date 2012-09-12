@@ -6,9 +6,9 @@
 #include "disas.h"
 #endif
 
-/* Private global variables, don't use */
-extern FILE *qemu_logfile;
+/* Private, don't use */
 extern int qemu_loglevel;
+extern FILE *qemu_logfile0(void);
 
 /* 
  * The new API:
@@ -19,10 +19,7 @@ extern int qemu_loglevel;
 
 /* Returns true if qemu_log() will really write somewhere
  */
-static inline bool qemu_log_enabled(void)
-{
-    return qemu_logfile != NULL;
-}
+bool qemu_log_enabled(void);
 
 #define CPU_LOG_TB_OUT_ASM (1 << 0)
 #define CPU_LOG_TB_IN_ASM  (1 << 1)
@@ -51,13 +48,7 @@ void GCC_FMT_ATTR(1, 2) qemu_log(const char *fmt, ...);
 
 /* vfprintf-like logging function
  */
-static inline void GCC_FMT_ATTR(1, 0)
-qemu_log_vprintf(const char *fmt, va_list va)
-{
-    if (qemu_logfile) {
-        vfprintf(qemu_logfile, fmt, va);
-    }
-}
+void GCC_FMT_ATTR(1, 0) qemu_log_vprintf(const char *fmt, va_list va);
 
 /* log only if a bit is set on the current loglevel mask
  */
@@ -70,8 +61,9 @@ void GCC_FMT_ATTR(2, 3) qemu_log_mask(int mask, const char *fmt, ...);
 /* cpu_dump_state() logging functions: */
 static inline void log_cpu_state(CPUArchState *env1, int flags)
 {
-    if (qemu_log_enabled()) {
-        cpu_dump_state(env1, qemu_logfile, fprintf, flags);
+    FILE *f = qemu_logfile0();
+    if (f) {
+        cpu_dump_state(env1, f, fprintf, flags);
     }
 }
 
@@ -86,19 +78,28 @@ static inline void log_cpu_state_mask(int mask, CPUArchState *env1, int flags)
 static inline void log_target_disas(target_ulong start, target_ulong len,
                                     int flags)
 {
-    target_disas(qemu_logfile, start, len, flags);
+    FILE *f = qemu_logfile0();
+    if (f) {
+        target_disas(f, start, len, flags);
+    }
 }
 
 static inline void log_disas(void *code, unsigned long size)
 {
-    disas(qemu_logfile, code, size);
+    FILE *f = qemu_logfile0();
+    if (f) {
+        disas(f, code, size);
+    }
 }
 
 #if defined(CONFIG_USER_ONLY)
 /* page_dump() output to the log file: */
 static inline void log_page_dump(void)
 {
-    page_dump(qemu_logfile);
+    FILE *f = qemu_logfile0();
+    if (f) {
+        page_dump(f);
+    }
 }
 #endif
 #endif
@@ -107,31 +108,13 @@ static inline void log_page_dump(void)
 /* Maintenance: */
 
 /* fflush() the log file */
-static inline void qemu_log_flush(void)
-{
-    fflush(qemu_logfile);
-}
+void qemu_log_flush(void);
 
 /* Close the log file */
-static inline void qemu_log_close(void)
-{
-    fclose(qemu_logfile);
-    qemu_logfile = NULL;
-}
-
-/* Set up a new log file */
-static inline void qemu_log_set_file(FILE *f)
-{
-    qemu_logfile = f;
-}
+void qemu_log_close(void);
 
 /* Set up a new log file, only if none is set */
-static inline void qemu_log_try_set_file(FILE *f)
-{
-    if (!qemu_logfile) {
-        qemu_logfile = f;
-    }
-}
+void qemu_log_try_set_file(FILE *f);
 
 /* define log items */
 typedef struct CPULogItem {
