@@ -28,6 +28,8 @@
 static VMStateField vmstate_env_fields[] = {
     VMSTATE_UINTTL_ARRAY(gpr, CPUSPUState, 128*4),
     VMSTATE_UINTTL(pc, CPUSPUState),
+    VMSTATE_UINTTL(srr0, CPUSPUState),
+    VMSTATE_UINTTL(lslr, CPUSPUState),
     VMSTATE_END_OF_LIST()
 };
 

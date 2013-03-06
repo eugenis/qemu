@@ -30,6 +30,7 @@
 typedef struct {
     struct TranslationBlock *tb;
     uint32_t pc;
+    uint32_t lslr;
     bool singlestep;
 } DisassContext;
 
@@ -249,6 +250,103 @@ static ExitStatus insn_##NAME(DisassContext *ctx, uint32_t insn)        \
 /* ---------------------------------------------------------------------- */
 /* Section 2: Memory Load/Store Instructions.  */
 
+static TCGv gen_address_a(DisassContext *ctx, uint32_t a)
+{
+    return tcg_const_tl(a & ctx->lslr & ~0xf);
+}
+
+static TCGv gen_address_x(DisassContext *ctx, TCGv a, TCGv b)
+{
+    TCGv addr = tcg_temp_new();
+    tcg_gen_add_tl(addr, a, b);
+    tcg_gen_andi_tl(addr, addr, ctx->lslr & ~0xf);
+    return addr;
+}
+
+static TCGv gen_address_d(DisassContext *ctx, TCGv a, int32_t disp)
+{
+    TCGv addr = tcg_temp_new();
+    tcg_gen_andi_tl(addr, a, ctx->lslr & ~0xf);
+    tcg_gen_addi_tl(addr, addr, disp * 16);
+    return addr;
+}
+
+static ExitStatus gen_loadq(TCGv addr, TCGv reg[4])
+{
+    tcg_gen_qemu_ld32u(reg[0], addr, 0);
+    tcg_gen_addi_tl(addr, addr, 4);
+    tcg_gen_qemu_ld32u(reg[1], addr, 0);
+    tcg_gen_addi_tl(addr, addr, 4);
+    tcg_gen_qemu_ld32u(reg[2], addr, 0);
+    tcg_gen_addi_tl(addr, addr, 4);
+    tcg_gen_qemu_ld32u(reg[3], addr, 0);
+    tcg_temp_free(addr);
+    return NO_EXIT;
+}
+
+static ExitStatus gen_storeq(TCGv addr, TCGv reg[4])
+{
+    tcg_gen_qemu_st32(reg[0], addr, 0);
+    tcg_gen_addi_tl(addr, addr, 4);
+    tcg_gen_qemu_st32(reg[1], addr, 0);
+    tcg_gen_addi_tl(addr, addr, 4);
+    tcg_gen_qemu_st32(reg[2], addr, 0);
+    tcg_gen_addi_tl(addr, addr, 4);
+    tcg_gen_qemu_st32(reg[3], addr, 0);
+    tcg_temp_free(addr);
+    return NO_EXIT;
+}
+
+static ExitStatus insn_lqd(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI10;
+    return gen_loadq(gen_address_d(ctx, cpu_gpr[ra][0], imm), cpu_gpr[rt]);
+}
+
+static ExitStatus insn_lqx(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RR;
+    return gen_loadq(gen_address_x(ctx, cpu_gpr[ra][0], cpu_gpr[rb][0]),
+                     cpu_gpr[rt]);
+}
+
+static ExitStatus insn_lqa(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI16;
+    return gen_loadq(gen_address_a(ctx, imm * 4), cpu_gpr[rt]);
+}
+
+static ExitStatus insn_lqr(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI16;
+    return gen_loadq(gen_address_a(ctx, ctx->pc + imm * 4), cpu_gpr[rt]);
+}
+
+static ExitStatus insn_stqd(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI10;
+    return gen_storeq(gen_address_d(ctx, cpu_gpr[ra][0], imm), cpu_gpr[rt]);
+}
+
+static ExitStatus insn_stqx(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RR;
+    return gen_storeq(gen_address_x(ctx, cpu_gpr[ra][0], cpu_gpr[rb][0]),
+                      cpu_gpr[rt]);
+}
+
+static ExitStatus insn_stqa(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI16;
+    return gen_storeq(gen_address_a(ctx, imm * 4), cpu_gpr[rt]);
+}
+
+static ExitStatus insn_stqr(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI16;
+    return gen_storeq(gen_address_a(ctx, ctx->pc + imm * 4), cpu_gpr[rt]);
+}
+
 /* ---------------------------------------------------------------------- */
 /* Section 3: Constant Formation Instructions.  */
 
@@ -366,8 +464,8 @@ static InsnDescr const translate_table[0x800] = {
     // INSN(0x120, RI18, hbrr),
 
     /* RI10 Instruction Format (8-bit op).  */
-    // INSN(0x340, RI10, lqd),
-    // INSN(0x240, RI10, stqd),
+    INSN(0x340, RI10, lqd),
+    INSN(0x240, RI10, stqd),
 
     // INSN(0x1d0, RI10, ahi),
     // INSN(0x1c0, RI10, ai),
@@ -401,10 +499,10 @@ static InsnDescr const translate_table[0x800] = {
     // INSN(0x5c0, RI10, clgti),
 
     /* RI16 Instruction Format (9-bit op).  */
-    // INSN(0x308, RI16, lqa),
-    // INSN(0x338, RI16, lqr),
-    // INSN(0x208, RI16, stqa),
-    // INSN(0x238, RI16, stqr),
+    INSN(0x308, RI16, lqa),
+    INSN(0x338, RI16, lqr),
+    INSN(0x208, RI16, stqa),
+    INSN(0x238, RI16, stqr),
 
     INSN(0x418, RI16, ilh),
     INSN(0x410, RI16, ilhu),
@@ -422,8 +520,8 @@ static InsnDescr const translate_table[0x800] = {
     // INSN(0x220, RI16, brhz),
 
     /* RR/RI7 Instruction Format (11-bit op).  */
-    // INSN(0x388, RR, lqx),
-    // INSN(0x288, RR, stqx),
+    INSN(0x388, RR, lqx),
+    INSN(0x288, RR, stqx),
 
     // INSN(0x3e8, RR, cbd),
     // INSN(0x3a8, RR, cbx),
@@ -633,6 +731,7 @@ void gen_intermediate_code(CPUSPUState *env, struct TranslationBlock *tb)
 
     ctx.tb = tb;
     ctx.pc = pc_start = tb->pc;
+    ctx.lslr = env->lslr;
     ctx.singlestep = cs->singlestep_enabled;
 
     if (ctx.singlestep || singlestep) {
