@@ -252,6 +252,55 @@ static ExitStatus insn_##NAME(DisassContext *ctx, uint32_t insn)        \
 /* ---------------------------------------------------------------------- */
 /* Section 3: Constant Formation Instructions.  */
 
+static ExitStatus gen_movi(TCGv r[4], int32_t imm)
+{
+    tcg_gen_movi_i32(r[0], imm);
+    tcg_gen_movi_i32(r[1], imm);
+    tcg_gen_movi_i32(r[2], imm);
+    tcg_gen_movi_i32(r[3], imm);
+    return NO_EXIT;
+}
+
+static ExitStatus insn_ilh(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI16;
+
+    imm &= 0xffff;
+    imm |= imm << 16;
+    return gen_movi(cpu_gpr[rt], imm);
+}
+
+static ExitStatus insn_ilhu(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI16;
+
+    imm <<= 16;
+    return gen_movi(cpu_gpr[rt], imm);
+}
+
+static ExitStatus insn_il(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI16;
+    return gen_movi(cpu_gpr[rt], imm);
+}
+
+static ExitStatus insn_ila(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI18;
+    return gen_movi(cpu_gpr[rt], imm);
+}
+
+static ExitStatus insn_iohl(DisassContext *ctx, uint32_t insn)
+{
+    TCGv temp[4];
+    DISASS_RI16;
+
+    load_temp_imm(temp, imm);
+    foreach_op3(tcg_gen_or_tl, cpu_gpr[rt], cpu_gpr[rt], temp);
+    free_temp(temp);
+    return NO_EXIT;
+}
+
 /* ---------------------------------------------------------------------- */
 /* Section 4: Integer and Logical Instructions.  */
 
@@ -312,7 +361,7 @@ static InsnDescr const translate_table[0x800] = {
     // INSN(0xf00, RRR, fms),
 
     /* RI18 Instruction Format (7-bit op).  */
-    // INSN(0x420, RI18, ila),
+    INSN(0x420, RI18, ila),
     // INSN(0x100, RI18, hbra),
     // INSN(0x120, RI18, hbrr),
 
@@ -357,10 +406,10 @@ static InsnDescr const translate_table[0x800] = {
     // INSN(0x208, RI16, stqa),
     // INSN(0x238, RI16, stqr),
 
-    // INSN(0x418, RI16, ilh),
-    // INSN(0x410, RI16, ilhu),
-    // INSN(0x408, RI16, il),
-    // INSN(0x608, RI16, iohl),
+    INSN(0x418, RI16, ilh),
+    INSN(0x410, RI16, ilhu),
+    INSN(0x408, RI16, il),
+    INSN(0x608, RI16, iohl),
     // INSN(0x328, RI16, fsmbi),
 
     // INSN(0x320, RI16, br),
