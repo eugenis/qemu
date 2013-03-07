@@ -302,6 +302,19 @@ static ExitStatus insn_##NAME(DisassContext *ctx, uint32_t insn)        \
     return NO_EXIT;							\
 }
 
+#define BYINDEX_RR1(NAME)                                               \
+static ExitStatus insn_##NAME(DisassContext *ctx, uint32_t insn)        \
+{                                                                       \
+    TCGv args;                                                          \
+    DISASS_RR1;                                                         \
+    args = tcg_const_tl(ra);                                            \
+    gen_helper_##NAME(cpu_env, args);                                   \
+    tcg_temp_free(args);                                                \
+    load_return(cpu_gpr[rt]);                                           \
+    return NO_EXIT;							\
+}
+
+
 /* ---------------------------------------------------------------------- */
 /* Section 2: Memory Load/Store Instructions.  */
 
@@ -1881,6 +1894,10 @@ BYINDEX_RR_3T(dfms)
 BYINDEX_RR_3T(dfnma)
 BYINDEX_RR_3T(dfnms)
 
+BYINDEX_RR1(frest)
+BYINDEX_RR1(frsqest)
+BYINDEX_RR(fi)
+
 /* ---------------------------------------------------------------------- */
 /* Section 10: Control Instructions.  */
 
@@ -2211,9 +2228,9 @@ static InsnDescr const translate_table[0x800] = {
     INSN(0x6bc, RR, dfnms),
     INSN(0x6ba, RR, dfms),
     INSN(0x6be, RR, dfnma),
-    // INSN(0x370, RR, FREST),
-    // INSN(0x372, RR, FRSQEST),
-    // INSN(0x7a8, RR, FI),
+    INSN(0x370, RR, frest),
+    INSN(0x372, RR, frsqest),
+    INSN(0x7a8, RR, fi),
     // INSN(0x768, RR, CSFLT),
     // INSN(0x760, RR, CFLTS),
     // INSN(0x76c, RR, CUFLT),

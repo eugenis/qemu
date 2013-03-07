@@ -25,20 +25,24 @@
 /* ??? The SPU floating point unit is majorly restricted, particularly when
    it comes to single precision.  We do not attempt to model that yet.  */
 
-#define HELPER_SP(NAME, FUNC)                                           \
+#define HELPER_SP2(NAME, FUNC)                                          \
 void helper_##NAME(CPUSPUState *env, uint32_t args)                     \
 {                                                                       \
     uint32_t ra = args & 0xff, rb = args >> 8, i;                       \
     for (i = 0; i < 4; ++i) {                                           \
-        env->ret[i] = float32_##FUNC(env->gpr[ra * 4 + i],              \
-                                     env->gpr[rb * 4 + i],              \
-                                     &env->sp_status[i]);               \
+        env->ret[i] = FUNC(env->gpr[ra * 4 + i], env->gpr[rb * 4 + i],  \
+                           &env->sp_status[i]);                         \
     }                                                                   \
 }
 
-HELPER_SP(fa, add)
-HELPER_SP(fs, sub)
-HELPER_SP(fm, mul)
+#define HELPER_SP1(NAME, FUNC)                                          \
+void helper_##NAME(CPUSPUState *env, uint32_t ra)                       \
+{                                                                       \
+    uint32_t i;                                                         \
+    for (i = 0; i < 4; ++i) {                                           \
+        env->ret[i] = FUNC(env->gpr[ra * 4 + i], &env->sp_status[i]);   \
+    }                                                                   \
+}
 
 #define HELPER_SP_FMA(NAME, O)                                          \
 void helper_##NAME(CPUSPUState *env, uint32_t args)                     \
@@ -52,9 +56,38 @@ void helper_##NAME(CPUSPUState *env, uint32_t args)                     \
     }                                                                   \
 }
 
+HELPER_SP2(fa, float32_add)
+HELPER_SP2(fs, float32_sub)
+HELPER_SP2(fm, float32_mul)
+
 HELPER_SP_FMA(fma, 0)
 HELPER_SP_FMA(fnms, float_muladd_negate_product)
 HELPER_SP_FMA(fms, float_muladd_negate_c)
+
+/* ??? This isn't really right, as we're ignoring the step portion.  */
+static inline float32 do_frest(float32 a, float_status *stat)
+{
+    return float32_div(float32_one, a, stat);
+}
+
+/* ??? Likewise.  */
+static inline float32 do_frsqest(float32 a, float_status *stat)
+{
+    a = float32_abs(a);
+    a = float32_sqrt(a, stat);
+    return float32_div(float32_one, a, stat);
+}
+
+/* ??? This is even more wrong, but works with the above mistakes,
+   given that we produced exact results.  */
+static inline float32 do_fi(float32 a, float32 b, float_status *stat)
+{
+    return b;
+}
+
+HELPER_SP1(frest, do_frest)
+HELPER_SP1(frsqest, do_frsqest)
+HELPER_SP2(fi, do_fi)
 
 static inline void sd(uint32_t *base, int lane, float64 v)
 {
