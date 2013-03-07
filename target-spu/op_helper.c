@@ -198,18 +198,18 @@ static uint32_t const identity[4] = {
     0x1c1d1e1f
 };
 
-void helper_cb(void *vt, uint32_t addr)
+void helper_cb(CPUSPUState *env, uint32_t addr)
 {
-    uint8_t *pt = vt;
+    uint8_t *pt = (uint8_t *)env->ret;
 
     memcpy(pt, identity, 16);
     addr &= 0xf;
     pt[addr ^ REG_BYTE_SWAP] = 3;
 }
 
-void helper_ch(void *vt, uint32_t addr)
+void helper_ch(CPUSPUState *env, uint32_t addr)
 {
-    uint8_t *pt = vt;
+    uint8_t *pt = (uint8_t *)env->ret;
 
     memcpy(pt, identity, 16);
     addr &= 0xe;
@@ -217,29 +217,31 @@ void helper_ch(void *vt, uint32_t addr)
     pt[(addr + 1)  ^ REG_BYTE_SWAP] = 3;
 }
 
-void helper_cw(void *vt, uint32_t addr)
+void helper_cw(CPUSPUState *env, uint32_t addr)
 {
-    uint32_t *p32 = vt;
+    uint32_t *p32 = env->ret;
 
     memcpy(p32, identity, 16);
     addr &= 0xc;
     p32[addr / 4] = 0x00010203;
 }
 
-void helper_cd(void *vt, uint32_t addr)
+void helper_cd(CPUSPUState *env, uint32_t addr)
 {
     static uint32_t const cd_val[2][4] = {
         { 0x00010203, 0x04050607, 0x18191a1b, 0x1c1d1e1f },
         { 0x10111213, 0x14151617, 0x00010203, 0x04050607 }
     };
 
-    memcpy(vt, &cd_val[(addr >> 3) & 1], 16);
+    memcpy(env->ret, &cd_val[(addr >> 3) & 1], 16);
 }
 
-void helper_shufb(void *vt, void *va, void *vb, void *vc)
+void helper_shufb(CPUSPUState *env, uint32_t args)
 {
-    uint8_t *pa = va, *pb = vb, *pc = vc;
-    uint8_t temp[16];
+    uint8_t *pa = (uint8_t *)&env->gpr[(args & 0xff) * 4];
+    uint8_t *pb = (uint8_t *)&env->gpr[((args >> 8) & 0xff) * 4];
+    uint8_t *pc = (uint8_t *)&env->gpr[((args >> 16) & 0xff) * 4];
+    uint8_t *ret = (uint8_t *)env->ret;
     unsigned i;
 
     for (i = 0; i < 16; ++i) {
@@ -253,10 +255,8 @@ void helper_shufb(void *vt, void *va, void *vb, void *vc)
         } else {
             val = (sel & 0x10 ? pb : pa)[(sel & 0xf) ^ REG_BYTE_SWAP];
         }
-        temp[i ^ REG_BYTE_SWAP] = val;
+        ret[i ^ REG_BYTE_SWAP] = val;
     }
-
-    memcpy(vt, temp, 16);
 }
 
 uint32_t helper_shlh(uint32_t a, uint32_t b)
@@ -272,20 +272,23 @@ uint32_t helper_shlh(uint32_t a, uint32_t b)
     return shiftl | shifth;
 }
 
-void helper_shlqby(void *vt, void *va, uint32_t count)
+void helper_shlqby(CPUSPUState *env, uint32_t ra, uint32_t count)
 {
-    uint8_t *pa = va;
+    uint8_t *pa = (uint8_t *)&env->gpr[ra * 4];
+    uint8_t *ret = (uint8_t *)env->ret;
     unsigned i;
-    uint8_t temp[16];
 
     count &= 0x1f;
-    memset(temp, 0, 16);
+    memset(ret, 0, 16);
 
     for (i = 0; i + count < 16; ++i) {
-        temp[i ^ REG_BYTE_SWAP] = pa[(i + count) ^ REG_BYTE_SWAP];
+        ret[i ^ REG_BYTE_SWAP] = pa[(i + count) ^ REG_BYTE_SWAP];
     }
+}
 
-    memcpy(vt, temp, 16);
+void helper_shlqbybi(CPUSPUState *env, uint32_t ra, uint32_t count)
+{
+    helper_shlqby(env, ra, count >> 3);
 }
 
 uint32_t helper_roth(uint32_t a, uint32_t b)
@@ -304,18 +307,21 @@ uint32_t helper_roth(uint32_t a, uint32_t b)
     return rotl | roth;
 }
 
-void helper_rotqby(void *vt, void *va, uint32_t count)
+void helper_rotqby(CPUSPUState *env, uint32_t ra, uint32_t count)
 {
-    uint8_t *pa = va;
+    uint8_t *pa = (uint8_t *)&env->gpr[ra * 4];
+    uint8_t *ret = (uint8_t *)env->ret;
     unsigned i;
-    uint8_t temp[16];
 
     count &= 15;
     for (i = 0; i < 16; ++i) {
-        temp[i ^ REG_BYTE_SWAP] = pa[((i + count) & 15) ^ REG_BYTE_SWAP];
+        ret[i ^ REG_BYTE_SWAP] = pa[((i + count) & 15) ^ REG_BYTE_SWAP];
     }
+}
 
-    memcpy(vt, temp, 16);
+void helper_rotqbybi(CPUSPUState *env, uint32_t ra, uint32_t count)
+{
+    helper_rotqby(env, ra, count >> 3);
 }
 
 /* As indicated in the Programming Notes associated with all of the
@@ -335,20 +341,23 @@ uint32_t helper_rothm(uint32_t a, uint32_t b)
     return shiftl | shifth;
 }
 
-void helper_rotqmby(void *vt, void *va, uint32_t count)
+void helper_rotqmby(CPUSPUState *env, uint32_t ra, uint32_t count)
 {
-    uint8_t *pa = va;
+    uint8_t *pa = (uint8_t *)&env->gpr[ra * 4];
+    uint8_t *ret = (uint8_t *)env->ret;
     unsigned i;
-    uint8_t temp[16];
 
     count &= 0x1f;
-    memset(temp, 0, 16);
+    memset(ret, 0, 16);
 
     for (i = 0; i + count < 16; ++i) {
-        temp[(i + count) ^ REG_BYTE_SWAP] = pa[i ^ REG_BYTE_SWAP];
+        ret[(i + count) ^ REG_BYTE_SWAP] = pa[i ^ REG_BYTE_SWAP];
     }
+}
 
-    memcpy(vt, temp, 16);
+void helper_rotqmbybi(CPUSPUState *env, uint32_t ra, uint32_t count)
+{
+    helper_rotqmby(env, ra, count >> 3);
 }
 
 uint32_t helper_rotmah(uint32_t a, uint32_t b)

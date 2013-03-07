@@ -168,6 +168,14 @@ static inline void free_temp(TCGv temp[4])
     }
 }
 
+static inline void load_return(TCGv rt[4])
+{
+    int i;
+    for (i = 0; i < 4; ++i) {
+        tcg_gen_ld_tl(rt[i], cpu_env, offsetof(CPUSPUState, ret[i]));
+    }
+}
+
 static inline void foreach_op2 (void (*op)(TCGv, TCGv), TCGv rt[4], TCGv ra[4])
 {
     int i;
@@ -245,6 +253,42 @@ static ExitStatus insn_##NAME(DisassContext *ctx, uint32_t insn)        \
 }
 
 #define FOREACH_RI10(NAME, FN)  FOREACH_RI10_ADJ(NAME, FN, )
+
+#define BYINDEX_RRR(NAME)                                               \
+static ExitStatus insn_##NAME(DisassContext *ctx, uint32_t insn)        \
+{                                                                       \
+    TCGv args;                                                          \
+    DISASS_RRR;                                                         \
+    args = tcg_const_tl((rc << 16) | (rb << 8) | ra);                   \
+    gen_helper_##NAME(cpu_env, args);                                   \
+    tcg_temp_free(args);                                                \
+    load_return(cpu_gpr[rt]);                                           \
+    return NO_EXIT;							\
+}
+
+#define BYINDEX_RR(NAME)                                                \
+static ExitStatus insn_##NAME(DisassContext *ctx, uint32_t insn)        \
+{                                                                       \
+    TCGv args;                                                          \
+    DISASS_RR;                                                          \
+    args = tcg_const_tl((rb << 8) | ra);                                \
+    gen_helper_##NAME(cpu_env, args);                                   \
+    tcg_temp_free(args);                                                \
+    load_return(cpu_gpr[rt]);                                           \
+    return NO_EXIT;							\
+}
+
+#define BYINDEX_RR_1V1S(NAME)                                           \
+static ExitStatus insn_##NAME(DisassContext *ctx, uint32_t insn)        \
+{                                                                       \
+    TCGv args;                                                          \
+    DISASS_RR;                                                          \
+    args = tcg_const_tl(ra);                                            \
+    gen_helper_##NAME(cpu_env, args, cpu_gpr[rb][0]);                   \
+    tcg_temp_free(args);                                                \
+    load_return(cpu_gpr[rt]);                                           \
+    return NO_EXIT;							\
+}
 
 /* ---------------------------------------------------------------------- */
 /* Section 2: Memory Load/Store Instructions.  */
@@ -346,15 +390,12 @@ static ExitStatus insn_stqr(DisassContext *ctx, uint32_t insn)
     return gen_storeq(gen_address_a(ctx, ctx->pc + imm * 4), cpu_gpr[rt]);
 }
 
-static ExitStatus gen_controls(void (*gen)(TCGv_ptr, TCGv), unsigned rt, TCGv addr)
+static ExitStatus gen_controls(void (*gen)(TCGv_ptr, TCGv),
+                               unsigned rt, TCGv addr)
 {
-    TCGv_ptr pt = tcg_temp_new_ptr();
-    tcg_gen_addi_ptr(pt, cpu_env, rt * 16);
-
-    gen(pt, addr);
-
+    gen(cpu_env, addr);
     tcg_temp_free(addr);
-    tcg_temp_free_ptr(pt);
+    load_return(cpu_gpr[rt]);
     return NO_EXIT;
 }
 
@@ -940,34 +981,7 @@ static void gen_selb(TCGv out, TCGv a, TCGv b, TCGv c)
 
 FOREACH_RRR(selb, gen_selb)
 
-static ExitStatus insn_shufb(DisassContext *ctx, uint32_t insn)
-{
-    TCGv_ptr pt, pa, pb, pc;
-    DISASS_RRR;
-
-    /* The only way to avoid the global state change is to pass three
-       complete vectors to a function and return an entire vector.
-       Which we cannot do with TCG.  Pass pointers to the vectors instead.  */
-    /* ??? We could get away with just passing INSN as a constant and
-       re-extracting the register numbers in the helper.  That would be
-       more efficient on the TCG side.  */
-    pt = tcg_temp_new_ptr();
-    pa = tcg_temp_new_ptr();
-    pb = tcg_temp_new_ptr();
-    pc = tcg_temp_new_ptr();
-    tcg_gen_addi_ptr(pt, cpu_env, rt * 16);
-    tcg_gen_addi_ptr(pa, cpu_env, ra * 16);
-    tcg_gen_addi_ptr(pb, cpu_env, rb * 16);
-    tcg_gen_addi_ptr(pc, cpu_env, rc * 16);
-
-    gen_helper_shufb(pt, pa, pb, pc);
-
-    tcg_temp_free_ptr(pt);
-    tcg_temp_free_ptr(pa);
-    tcg_temp_free_ptr(pb);
-    tcg_temp_free_ptr(pc);
-    return NO_EXIT;
-}
+BYINDEX_RRR(shufb)
 
 /* ---------------------------------------------------------------------- */
 /* Section 6: Shift and Rotate Instructions.  */
@@ -1092,22 +1106,7 @@ static ExitStatus insn_shlqbii(DisassContext *ctx, uint32_t insn)
     return NO_EXIT;
 }
 
-static ExitStatus insn_shlqby(DisassContext *ctx, uint32_t insn)
-{
-    TCGv_ptr pt, pa;
-    DISASS_RR;
-
-    pt = tcg_temp_new_ptr();
-    pa = tcg_temp_new_ptr();
-    tcg_gen_addi_ptr(pt, cpu_env, rt * 16);
-    tcg_gen_addi_ptr(pa, cpu_env, ra * 16);
-
-    gen_helper_shlqby(pt, pa, cpu_gpr[rb][0]);
-
-    tcg_temp_free_ptr(pt);
-    tcg_temp_free_ptr(pa);
-    return NO_EXIT;
-}
+BYINDEX_RR_1V1S(shlqby)
 
 static ExitStatus insn_shlqbyi(DisassContext *ctx, uint32_t insn)
 {
@@ -1143,27 +1142,7 @@ static ExitStatus insn_shlqbyi(DisassContext *ctx, uint32_t insn)
     return NO_EXIT;
 }
 
-static ExitStatus insn_shlqbybi(DisassContext *ctx, uint32_t insn)
-{
-    TCGv_ptr pt, pa;
-    TCGv temp;
-    DISASS_RR;
-
-    pt = tcg_temp_new_ptr();
-    pa = tcg_temp_new_ptr();
-    tcg_gen_addi_ptr(pt, cpu_env, rt * 16);
-    tcg_gen_addi_ptr(pa, cpu_env, ra * 16);
-
-    temp = tcg_temp_new();
-    tcg_gen_shri_tl(temp, cpu_gpr[rb][0], 3);
-
-    gen_helper_shlqby(pt, pa, temp);
-
-    tcg_temp_free(temp);
-    tcg_temp_free_ptr(pt);
-    tcg_temp_free_ptr(pa);
-    return NO_EXIT;
-}
+BYINDEX_RR_1V1S(shlqbybi)
 
 FOREACH_RR(roth, gen_helper_roth)
 FOREACH_RI7_ADJ(rothi, gen_helper_roth, imm &= 0xf; imm |= imm << 16)
@@ -1171,22 +1150,7 @@ FOREACH_RI7_ADJ(rothi, gen_helper_roth, imm &= 0xf; imm |= imm << 16)
 FOREACH_RR(rot, tcg_gen_rotl_tl)
 FOREACH_RI7_ADJ(roti, tcg_gen_rotl_tl, imm &= 0x1f)
 
-static ExitStatus insn_rotqby(DisassContext *ctx, uint32_t insn)
-{
-    TCGv_ptr pt, pa;
-    DISASS_RR;
-
-    pt = tcg_temp_new_ptr();
-    pa = tcg_temp_new_ptr();
-    tcg_gen_addi_ptr(pt, cpu_env, rt * 16);
-    tcg_gen_addi_ptr(pa, cpu_env, ra * 16);
-
-    gen_helper_rotqby(pt, pa, cpu_gpr[rb][0]);
-
-    tcg_temp_free_ptr(pt);
-    tcg_temp_free_ptr(pa);
-    return NO_EXIT;
-}
+BYINDEX_RR_1V1S(rotqby)
 
 static ExitStatus insn_rotqbyi(DisassContext *ctx, uint32_t insn)
 {
@@ -1227,27 +1191,7 @@ static ExitStatus insn_rotqbyi(DisassContext *ctx, uint32_t insn)
     return NO_EXIT;
 }
 
-static ExitStatus insn_rotqbybi(DisassContext *ctx, uint32_t insn)
-{
-    TCGv_ptr pt, pa;
-    TCGv temp;
-    DISASS_RR;
-
-    pt = tcg_temp_new_ptr();
-    pa = tcg_temp_new_ptr();
-    tcg_gen_addi_ptr(pt, cpu_env, rt * 16);
-    tcg_gen_addi_ptr(pa, cpu_env, ra * 16);
-
-    temp = tcg_temp_new();
-    tcg_gen_shri_tl(temp, cpu_gpr[rb][0], 3);
-
-    gen_helper_rotqby(pt, pa, temp);
-
-    tcg_temp_free(temp);
-    tcg_temp_free_ptr(pt);
-    tcg_temp_free_ptr(pa);
-    return NO_EXIT;
-}
+BYINDEX_RR_1V1S(rotqbybi)
 
 static ExitStatus insn_rotqbi(DisassContext *ctx, uint32_t insn)
 {
@@ -1380,22 +1324,7 @@ static void gen_shrd(TCGv out, TCGv a, TCGv b, TCGv shr, TCGv shl)
     tcg_temp_free(temp);
 }
 
-static ExitStatus insn_rotqmby(DisassContext *ctx, uint32_t insn)
-{
-    TCGv_ptr pt, pa;
-    DISASS_RR;
-
-    pt = tcg_temp_new_ptr();
-    pa = tcg_temp_new_ptr();
-    tcg_gen_addi_ptr(pt, cpu_env, rt * 16);
-    tcg_gen_addi_ptr(pa, cpu_env, ra * 16);
-
-    gen_helper_rotqmby(pt, pa, cpu_gpr[rb][0]);
-
-    tcg_temp_free_ptr(pt);
-    tcg_temp_free_ptr(pa);
-    return NO_EXIT;
-}
+BYINDEX_RR_1V1S(rotqmby)
 
 static ExitStatus insn_rotqmbyi(DisassContext *ctx, uint32_t insn)
 {
@@ -1432,27 +1361,7 @@ static ExitStatus insn_rotqmbyi(DisassContext *ctx, uint32_t insn)
     return NO_EXIT;
 }
 
-static ExitStatus insn_rotqmbybi(DisassContext *ctx, uint32_t insn)
-{
-    TCGv_ptr pt, pa;
-    TCGv temp;
-    DISASS_RR;
-
-    pt = tcg_temp_new_ptr();
-    pa = tcg_temp_new_ptr();
-    tcg_gen_addi_ptr(pt, cpu_env, rt * 16);
-    tcg_gen_addi_ptr(pa, cpu_env, ra * 16);
-
-    temp = tcg_temp_new();
-    tcg_gen_shri_tl(temp, cpu_gpr[rb][0], 3);
-
-    gen_helper_shlqby(pt, pa, temp);
-
-    tcg_temp_free(temp);
-    tcg_temp_free_ptr(pt);
-    tcg_temp_free_ptr(pa);
-    return NO_EXIT;
-}
+BYINDEX_RR_1V1S(rotqmbybi)
 
 static ExitStatus insn_rotqmbi(DisassContext *ctx, uint32_t insn)
 {

@@ -51,6 +51,9 @@ typedef struct CPUSPUState {
     uint32_t inte;
     uint32_t lslr;
 
+    /* Used to return a vector without having to clobber all globals.  */
+    uint32_t ret[4];
+
     /* Those resources are used only in QEMU core.  */
     CPU_COMMON
     int error_code;
