@@ -54,6 +54,10 @@ typedef struct CPUSPUState {
     /* Used to return a vector without having to clobber all globals.  */
     uint32_t ret[4];
 
+    /* The FPSCR, decomposed into 4*single-precision and 2*double-precision. */
+    float_status sp_status[4];
+    float_status dp_status[2];
+
     /* Those resources are used only in QEMU core.  */
     CPU_COMMON
     int error_code;

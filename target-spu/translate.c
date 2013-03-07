@@ -290,6 +290,18 @@ static ExitStatus insn_##NAME(DisassContext *ctx, uint32_t insn)        \
     return NO_EXIT;							\
 }
 
+#define BYINDEX_RR_3T(NAME)                                             \
+static ExitStatus insn_##NAME(DisassContext *ctx, uint32_t insn)        \
+{                                                                       \
+    TCGv args;                                                          \
+    DISASS_RR;                                                          \
+    args = tcg_const_tl((rt << 16) | (rb << 8) | ra);                   \
+    gen_helper_##NAME(cpu_env, args);                                   \
+    tcg_temp_free(args);                                                \
+    load_return(cpu_gpr[rt]);                                           \
+    return NO_EXIT;							\
+}
+
 /* ---------------------------------------------------------------------- */
 /* Section 2: Memory Load/Store Instructions.  */
 
@@ -1852,6 +1864,23 @@ static ExitStatus insn_hbrr(DisassContext *ctx, uint32_t insn)
 /* ---------------------------------------------------------------------- */
 /* Section 9: Floating-Point Instructions.  */
 
+BYINDEX_RR(fa)
+BYINDEX_RR(fs)
+BYINDEX_RR(fm)
+
+BYINDEX_RRR(fma)
+BYINDEX_RRR(fms)
+BYINDEX_RRR(fnms)
+
+BYINDEX_RR(dfa)
+BYINDEX_RR(dfs)
+BYINDEX_RR(dfm)
+
+BYINDEX_RR_3T(dfma)
+BYINDEX_RR_3T(dfms)
+BYINDEX_RR_3T(dfnma)
+BYINDEX_RR_3T(dfnms)
+
 /* ---------------------------------------------------------------------- */
 /* Section 10: Control Instructions.  */
 
@@ -1994,9 +2023,9 @@ static InsnDescr const translate_table[0x800] = {
     INSN(0x800, RRR, selb),
     INSN(0xb00, RRR, shufb),
     INSN(0xc00, RRR, mpya),
-    // INSN(0xd00, RRR, fnms),
-    // INSN(0xe00, RRR, fma),
-    // INSN(0xf00, RRR, fms),
+    INSN(0xd00, RRR, fnms),
+    INSN(0xe00, RRR, fma),
+    INSN(0xf00, RRR, fms),
 
     /* RI18 Instruction Format (7-bit op).  */
     INSN(0x420, RI18, ila),
@@ -2172,16 +2201,16 @@ static InsnDescr const translate_table[0x800] = {
 
     INSN(0x358, RR, hbr),
 
-    // INSN(0x588, RR, FA),
-    // INSN(0x598, RR, DFA),
-    // INSN(0x58a, RR, FS),
-    // INSN(0x59a, RR, DFS),
-    // INSN(0x58c, RR, FM),
-    // INSN(0x59c, RR, DFM),
-    // INSN(0x6b8, RR, DFMA),
-    // INSN(0x6bc, RR, DFNMS),
-    // INSN(0x6ba, RR, DFMS),
-    // INSN(0x6be, RR, DFNMA),
+    INSN(0x588, RR, fa),
+    INSN(0x598, RR, dfa),
+    INSN(0x58a, RR, fs),
+    INSN(0x59a, RR, dfs),
+    INSN(0x58c, RR, fm),
+    INSN(0x59c, RR, dfm),
+    INSN(0x6b8, RR, dfma),
+    INSN(0x6bc, RR, dfnms),
+    INSN(0x6ba, RR, dfms),
+    INSN(0x6be, RR, dfnma),
     // INSN(0x370, RR, FREST),
     // INSN(0x372, RR, FRSQEST),
     // INSN(0x7a8, RR, FI),
