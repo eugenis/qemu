@@ -402,6 +402,271 @@ static ExitStatus insn_iohl(DisassContext *ctx, uint32_t insn)
 /* ---------------------------------------------------------------------- */
 /* Section 4: Integer and Logical Instructions.  */
 
+static void gen_addh(TCGv out, TCGv a, TCGv b)
+{
+    TCGv high = tcg_temp_new();
+    TCGv low = tcg_temp_new();
+
+    tcg_gen_add_tl(low, a, b);
+
+    /* By zapping low half of A, we guarantee no carry into high
+       without having to fiddle B.  That will get done in DEPOSIT.  */
+    tcg_gen_andi_tl(high, a, 0xffff0000);
+    tcg_gen_add_tl(out, high, b);
+    tcg_gen_deposit_tl(out, out, low, 0, 16);
+
+    tcg_temp_free(high);
+    tcg_temp_free(low);
+}
+
+FOREACH_RR(ah, gen_addh)
+FOREACH_RI10(ahi, gen_addh)
+
+FOREACH_RR(a, tcg_gen_add_tl)
+FOREACH_RI10(ai, tcg_gen_add_tl)
+
+static void gen_sfh(TCGv out, TCGv a, TCGv b)
+{
+    TCGv high = tcg_temp_new();
+    TCGv low = tcg_temp_new();
+
+    tcg_gen_sub_tl(low, b, a);
+
+    tcg_gen_andi_tl(high, a, 0xffff0000);
+    tcg_gen_sub_tl(out, b, high);
+    tcg_gen_deposit_tl(out, out, low, 0, 16);
+
+    tcg_temp_free(high);
+    tcg_temp_free(low);
+}
+
+FOREACH_RR(sfh, gen_sfh)
+FOREACH_RI10(sfhi, gen_sfh)
+
+static void gen_sf(TCGv out, TCGv a, TCGv b)
+{
+    tcg_gen_sub_tl(out, b, a);
+}
+
+FOREACH_RR(sf, gen_sf)
+FOREACH_RI10(sfi, gen_sf)
+
+static void gen_addx(TCGv out, TCGv a, TCGv b)
+{
+    TCGv tmp = tcg_temp_new();
+
+    tcg_gen_andi_tl(tmp, out, 1);
+    tcg_gen_add_tl(tmp, tmp, a);
+    tcg_gen_add_tl(out, tmp, b);
+    
+    tcg_temp_free(tmp);
+}
+
+FOREACH_RR(addx, gen_addx)
+
+static void gen_cg(TCGv out, TCGv a, TCGv b)
+{
+    TCGv out_low = tcg_temp_new();
+    TCGv in_zero = tcg_const_tl(0);
+
+    tcg_gen_add2_tl(out_low, out, a, in_zero, b, in_zero);
+
+    tcg_temp_free(out_low);
+    tcg_temp_free(in_zero);
+}
+
+FOREACH_RR(cg, gen_cg)
+
+static void gen_cgx(TCGv out, TCGv a, TCGv b)
+{
+    TCGv out_low = tcg_temp_new();
+    TCGv in_zero = tcg_const_tl(0);
+    TCGv out_lsb = tcg_temp_new();
+
+    tcg_gen_andi_tl(out_lsb, out, 1);
+    tcg_gen_add2_tl(out_low, out, a, in_zero, b, in_zero);
+    tcg_gen_add2_tl(out_low, out, out_low, out, out_lsb, in_zero);
+
+    tcg_temp_free(out_low);
+    tcg_temp_free(in_zero);
+    tcg_temp_free(out_lsb);
+}
+
+FOREACH_RR(cgx, gen_cgx)
+
+static void gen_sfx(TCGv out, TCGv a, TCGv b)
+{
+    TCGv tmp = tcg_temp_new();
+    TCGv lsb = tcg_temp_new();
+
+    /* The description in the manual is convoluted, but it's the same as
+       the PowerPC (low, ca) = ~ra + rb + ca.  */
+    
+    tcg_gen_not_tl(tmp, a);
+    tcg_gen_andi_tl(lsb, out, 1);
+    tcg_gen_add_tl(tmp, tmp, b);
+    tcg_gen_add_tl(out, tmp, lsb);
+
+    tcg_temp_free(tmp);
+    tcg_temp_free(lsb);
+}
+
+FOREACH_RR(sfx, gen_sfx)
+
+static void gen_bg(TCGv out, TCGv a, TCGv b)
+{
+    tcg_gen_setcond_i32(TCG_COND_GTU, out, a, b);
+}
+
+FOREACH_RR(bg, gen_bg)
+
+static void gen_bgx(TCGv out, TCGv a, TCGv b)
+{
+    TCGv out_low = tcg_temp_new();
+    TCGv in_zero = tcg_const_tl(0);
+    TCGv out_lsb = tcg_temp_new();
+
+    /* The description in the manual is convoluted, but it's the same as
+       the PowerPC (low, ca) = ~ra + rb + ca.  */
+
+    tcg_gen_not_tl(out_low, a);
+    tcg_gen_andi_tl(out_lsb, out, 1);
+    tcg_gen_add2_tl(out_low, out, out_low, in_zero, b, in_zero);
+    tcg_gen_add2_tl(out_low, out, out_low, out, out_lsb, in_zero);
+
+    tcg_temp_free(out_low);
+    tcg_temp_free(in_zero);
+    tcg_temp_free(out_lsb);
+}
+
+FOREACH_RR(bgx, gen_bgx)
+
+static void gen_mpy(TCGv out, TCGv a, TCGv b)
+{
+    TCGv al = tcg_temp_new();
+    TCGv bl = tcg_temp_new();
+
+    tcg_gen_ext16s_tl(al, a);
+    tcg_gen_ext16s_tl(bl, b);
+    tcg_gen_mul_tl(out, al, bl);
+
+    tcg_temp_free(al);
+    tcg_temp_free(bl);
+}
+
+FOREACH_RR(mpy, gen_mpy)
+FOREACH_RI10(mpyi, gen_mpy)
+
+static void gen_mpyu(TCGv out, TCGv a, TCGv b)
+{
+    TCGv al = tcg_temp_new();
+    TCGv bl = tcg_temp_new();
+
+    tcg_gen_ext16u_tl(al, a);
+    tcg_gen_ext16u_tl(bl, b);
+    tcg_gen_mul_tl(out, al, bl);
+
+    tcg_temp_free(al);
+    tcg_temp_free(bl);
+}
+
+FOREACH_RR(mpyu, gen_mpyu)
+FOREACH_RI10(mpyui, gen_mpyu)
+
+static void gen_mpya(TCGv out, TCGv a, TCGv b, TCGv c)
+{
+    TCGv t = tcg_temp_new();
+    gen_mpy(t, a, b);
+    tcg_gen_add_tl(out, t, c);
+}
+
+FOREACH_RRR(mpya, gen_mpya)
+
+static void gen_mpyh(TCGv out, TCGv a, TCGv b)
+{
+    TCGv ah = tcg_temp_new();
+    TCGv bl = tcg_temp_new();
+
+    tcg_gen_sari_tl(ah, a, 16);
+    tcg_gen_ext16s_tl(bl, b);
+    tcg_gen_mul_tl(out, ah, bl);
+
+    tcg_temp_free(ah);
+    tcg_temp_free(bl);
+}
+
+FOREACH_RR(mpyh, gen_mpyh)
+
+static void gen_mpys(TCGv out, TCGv a, TCGv b)
+{
+    TCGv al = tcg_temp_new();
+    TCGv bl = tcg_temp_new();
+
+    tcg_gen_ext16s_tl(al, a);
+    tcg_gen_ext16s_tl(bl, b);
+    tcg_gen_mul_tl(out, al, bl);
+    tcg_gen_sari_tl(out, out, 16);
+
+    tcg_temp_free(al);
+    tcg_temp_free(bl);
+}
+
+FOREACH_RR(mpys, gen_mpys)
+
+static void gen_mpyhh(TCGv out, TCGv a, TCGv b)
+{
+    TCGv ah = tcg_temp_new();
+    TCGv bh = tcg_temp_new();
+
+    tcg_gen_sari_tl(ah, a, 16);
+    tcg_gen_sari_tl(bh, b, 16);
+    tcg_gen_mul_tl(out, ah, bh);
+
+    tcg_temp_free(ah);
+    tcg_temp_free(bh);
+}
+
+FOREACH_RR(mpyhh, gen_mpyhh)
+
+static void gen_mpyhha(TCGv out, TCGv a, TCGv b)
+{
+    TCGv t = tcg_temp_new();
+
+    gen_mpyhh(t, a, b);
+    tcg_gen_add_tl(out, out, t);
+
+    tcg_temp_free(t);
+}
+
+FOREACH_RR(mpyhha, gen_mpyhha)
+
+static void gen_mpyhhu(TCGv out, TCGv a, TCGv b)
+{
+    TCGv ah = tcg_temp_new();
+    TCGv bh = tcg_temp_new();
+
+    tcg_gen_shri_tl(ah, a, 16);
+    tcg_gen_shri_tl(bh, b, 16);
+    tcg_gen_mul_tl(out, ah, bh);
+
+    tcg_temp_free(ah);
+    tcg_temp_free(bh);
+}
+
+FOREACH_RR(mpyhhu, gen_mpyhhu)
+
+static void gen_mpyhhau(TCGv out, TCGv a, TCGv b)
+{
+    TCGv t = tcg_temp_new();
+
+    gen_mpyhhu(t, a, b);
+    tcg_gen_add_tl(out, out, t);
+
+    tcg_temp_free(t);
+}
+
+FOREACH_RR(mpyhhau, gen_mpyhhau)
+
 /* ---------------------------------------------------------------------- */
 /* Section 6: Shift and Rotate Instructions.  */
 
@@ -453,7 +718,7 @@ static InsnDescr const translate_table[0x800] = {
     /* RRR Instruction Format (4-bit op).  */
     // INSN(0x800, RRR, selb),
     // INSN(0xb00, RRR, shufb),
-    // INSN(0xc00, RRR, mpya),
+    INSN(0xc00, RRR, mpya),
     // INSN(0xd00, RRR, fnms),
     // INSN(0xe00, RRR, fma),
     // INSN(0xf00, RRR, fms),
@@ -467,13 +732,13 @@ static InsnDescr const translate_table[0x800] = {
     INSN(0x340, RI10, lqd),
     INSN(0x240, RI10, stqd),
 
-    // INSN(0x1d0, RI10, ahi),
-    // INSN(0x1c0, RI10, ai),
-    // INSN(0x0d0, RI10, sfhi),
-    // INSN(0x0c0, RI10, sfi),
+    INSN(0x1d0, RI10, ahi),
+    INSN(0x1c0, RI10, ai),
+    INSN(0x0d0, RI10, sfhi),
+    INSN(0x0c0, RI10, sfi),
 
-    // INSN(0x740, RI10, mpyi),
-    // INSN(0x750, RI10, mpyui),
+    INSN(0x740, RI10, mpyi),
+    INSN(0x750, RI10, mpyui),
 
     // INSN(0x160, RI10, andbi),
     // INSN(0x150, RI10, andhi),
@@ -532,25 +797,25 @@ static InsnDescr const translate_table[0x800] = {
     // INSN(0x3ee, RR, cdd),
     // INSN(0x3ae, RR, cdx),
 
-    // INSN(0x190, RR, ah),
-    // INSN(0x180, RR, a),
-    // INSN(0x090, RR, sfh),
-    // INSN(0x080, RR, sf),
-    // INSN(0x680, RR, addx),
-    // INSN(0x184, RR, cg),
-    // INSN(0x684, RR, cgx),
-    // INSN(0x682, RR, sfx),
-    // INSN(0x084, RR, bg),
-    // INSN(0x686, RR, bgx),
+    INSN(0x190, RR, ah),
+    INSN(0x180, RR, a),
+    INSN(0x090, RR, sfh),
+    INSN(0x080, RR, sf),
+    INSN(0x680, RR, addx),
+    INSN(0x184, RR, cg),
+    INSN(0x684, RR, cgx),
+    INSN(0x682, RR, sfx),
+    INSN(0x084, RR, bg),
+    INSN(0x686, RR, bgx),
 
-    // INSN(0x788, RR, mpy),
-    // INSN(0x798, RR, mpyu),
-    // INSN(0x78a, RR, mpyh),
-    // INSN(0x78e, RR, mpys),
-    // INSN(0x78c, RR, mpyhh),
-    // INSN(0x68c, RR, mpyhha),
-    // INSN(0x79c, RR, mpyhhu),
-    // INSN(0x69c, RR, mpyhhau),
+    INSN(0x788, RR, mpy),
+    INSN(0x798, RR, mpyu),
+    INSN(0x78a, RR, mpyh),
+    INSN(0x78e, RR, mpys),
+    INSN(0x78c, RR, mpyhh),
+    INSN(0x68c, RR, mpyhha),
+    INSN(0x79c, RR, mpyhhu),
+    INSN(0x69c, RR, mpyhhau),
 
     // INSN(0x54a, RR, clz),
     // INSN(0x568, RR, cntb),
