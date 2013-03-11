@@ -131,3 +131,66 @@ HELPER_DP_FMA(dfma, 0)
 HELPER_DP_FMA(dfnma, float_muladd_negate_result)
 HELPER_DP_FMA(dfms, float_muladd_negate_c)
 HELPER_DP_FMA(dfnms, float_muladd_negate_c | float_muladd_negate_result)
+
+void helper_csflt(CPUSPUState *env, uint32_t ra, uint32_t scale)
+{
+    uint32_t i;
+    float32 t;
+    for (i = 0; i < 4; ++i) {
+        t = int32_to_float32(env->gpr[ra * 4 + i], &env->sp_status[i]);
+        t = float32_scalbn(t, -scale, &env->sp_status[i]);
+        env->ret[i] = t;
+    }
+}
+
+void helper_cuflt(CPUSPUState *env, uint32_t ra, uint32_t scale)
+{
+    uint32_t i;
+    float32 t;
+    for (i = 0; i < 4; ++i) {
+        t = uint32_to_float32(env->gpr[ra * 4 + i], &env->sp_status[i]);
+        t = float32_scalbn(t, -scale, &env->sp_status[i]);
+        env->ret[i] = t;
+    }
+}
+
+void helper_cflts(CPUSPUState *env, uint32_t ra, uint32_t scale)
+{
+    uint32_t i;
+    float32 t;
+    for (i = 0; i < 4; ++i) {
+        t = float32_scalbn(env->gpr[ra * 4 + i], scale, &env->sp_status[i]);
+        t = float32_to_int32(t, &env->sp_status[i]);
+        env->ret[i] = t;
+    }
+}
+
+void helper_cfltu(CPUSPUState *env, uint32_t ra, uint32_t scale)
+{
+    uint32_t i;
+    float32 t;
+    for (i = 0; i < 4; ++i) {
+        t = float32_scalbn(env->gpr[ra * 4 + i], scale, &env->sp_status[i]);
+        t = float32_to_uint32(t, &env->sp_status[i]);
+        env->ret[i] = t;
+    }
+}
+
+void helper_frds(CPUSPUState *env, uint32_t ra)
+{
+    uint32_t i;
+    for (i = 0; i < 2; ++i) {
+        env->ret[i * 2] = float64_to_float32(gd(&env->gpr[ra * 4], i),
+                                             &env->dp_status[i]);
+        env->ret[i * 2 + 1] = 0;
+    }
+}
+
+void helper_fesd(CPUSPUState *env, uint32_t ra)
+{
+    uint32_t i;
+    for (i = 0; i < 2; ++i) {
+        sd(env->ret, i, float32_to_float64(env->gpr[ra * 4 + i * 2],
+                                           &env->sp_status[i * 2]));
+    }
+}

@@ -114,6 +114,13 @@ static char cpu_reg_names[128][4][8];
     qemu_log_mask(CPU_LOG_TB_IN_ASM, "%8x:\t%s\t$%d,$%d,%d\n", \
                   ctx->pc, INSN, rt, ra, imm)
 
+#define DISASS_RI8(BIAS)                        \
+    unsigned rt = extract32(insn, 0, 7);        \
+    unsigned ra = extract32(insn, 7, 7);        \
+    int32_t imm = BIAS - extract32(insn, 14, 8); \
+    qemu_log_mask(CPU_LOG_TB_IN_ASM, "%8x:\t%s\t$%d,$%d,%d\n", \
+                  ctx->pc, INSN, rt, ra, imm)
+
 #define DISASS_RI10                             \
     unsigned rt = extract32(insn, 0, 7);        \
     unsigned ra = extract32(insn, 7, 7);        \
@@ -314,6 +321,19 @@ static ExitStatus insn_##NAME(DisassContext *ctx, uint32_t insn)        \
     return NO_EXIT;							\
 }
 
+#define BYINDEX_RI8_BIAS(NAME, BIAS)                                    \
+static ExitStatus insn_##NAME(DisassContext *ctx, uint32_t insn)        \
+{                                                                       \
+    TCGv args, scale;                                                   \
+    DISASS_RI8(BIAS);                                                   \
+    args = tcg_const_tl(ra);                                            \
+    scale = tcg_const_tl(imm);                                          \
+    gen_helper_##NAME(cpu_env, args, scale);                            \
+    tcg_temp_free(args);                                                \
+    tcg_temp_free(scale);                                               \
+    load_return(cpu_gpr[rt]);                                           \
+    return NO_EXIT;							\
+}
 
 /* ---------------------------------------------------------------------- */
 /* Section 2: Memory Load/Store Instructions.  */
@@ -1898,6 +1918,14 @@ BYINDEX_RR1(frest)
 BYINDEX_RR1(frsqest)
 BYINDEX_RR(fi)
 
+BYINDEX_RI8_BIAS(csflt, 155)
+BYINDEX_RI8_BIAS(cflts, 173)
+BYINDEX_RI8_BIAS(cuflt, 155)
+BYINDEX_RI8_BIAS(cfltu, 173)
+
+BYINDEX_RR1(frds)
+BYINDEX_RR1(fesd)
+
 /* ---------------------------------------------------------------------- */
 /* Section 10: Control Instructions.  */
 
@@ -2231,12 +2259,12 @@ static InsnDescr const translate_table[0x800] = {
     INSN(0x370, RR, frest),
     INSN(0x372, RR, frsqest),
     INSN(0x7a8, RR, fi),
-    // INSN(0x768, RR, CSFLT),
-    // INSN(0x760, RR, CFLTS),
-    // INSN(0x76c, RR, CUFLT),
-    // INSN(0x764, RR, CFLTU),
-    // INSN(0x772, RR, FRDS),
-    // INSN(0x770, RR, FESD),
+    INSN(0x768, RR, csflt),
+    INSN(0x760, RR, cflts),
+    INSN(0x76c, RR, cuflt),
+    INSN(0x764, RR, cfltu),
+    INSN(0x772, RR, frds),
+    INSN(0x770, RR, fesd),
     // INSN(0x786, RR, DFCEQ),
     // INSN(0x796, RR, DFCMEQ),
     // INSN(0x586, RR, DFCGT),
