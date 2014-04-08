@@ -2012,6 +2012,18 @@ EOF
 fi
 
 ##########################################
+# libffi check
+
+if test "$tcg_interpreter" != "no" ; then
+    if $pkg_config --atleast-version=3.0 libffi; then
+        LIBS="$LIBS `$pkg_config --libs libffi`"
+        QEMU_CFLAGS="$QEMU_CFLAGS `$pkg_config --cflags libffi`"
+    else
+        feature_not_found "tcg-interpreter" "Install libffi devel >= 3.0"
+    fi
+fi
+
+##########################################
 # libseccomp check
 
 if test "$seccomp" != "no" ; then

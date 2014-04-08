@@ -59,6 +59,10 @@
 #include "elf.h"
 #include "exec/log.h"
 
+#ifdef CONFIG_TCG_INTERPRETER
+#include <ffi.h>
+#endif
+
 /* Forward declarations for functions declared in tcg-target.inc.c and
    used here. */
 static void tcg_target_init(TCGContext *s);
@@ -308,12 +312,19 @@ void tcg_pool_reset(TCGContext *s)
 
 typedef struct TCGHelperInfo {
     void *func;
+#ifdef CONFIG_TCG_INTERPRETER
+    ffi_cif *cif;
+#endif
     const char *name;
     unsigned flags;
     unsigned sizemask;
 } TCGHelperInfo;
 
 #include "exec/helper-proto.h"
+
+#ifdef CONFIG_TCG_INTERPRETER
+#include "exec/helper-ffi.h"
+#endif
 
 static const TCGHelperInfo all_helpers[] = {
 #include "exec/helper-tcg.h"
