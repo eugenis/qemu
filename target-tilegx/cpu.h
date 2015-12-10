@@ -88,6 +88,8 @@ typedef struct CPUTLGState {
     uint64_t spregs[TILEGX_SPR_COUNT]; /* Special used registers by outside */
     uint64_t pc;                       /* Current pc */
 
+    float_status fp_status;            /* floating point status */
+
 #if defined(CONFIG_USER_ONLY)
     uint64_t excaddr;                  /* exception address */
     uint64_t atomic_srca;              /* Arguments to atomic "exceptions" */
