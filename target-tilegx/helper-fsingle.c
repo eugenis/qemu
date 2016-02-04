@@ -22,8 +22,7 @@
 #include "qemu-common.h"
 #include "exec/helper-proto.h"
 #include "fpu/softfloat.h"
-
-#include "helper-fshared.c"
+#include "internal.h"
 
 /*
  * FSingle instructions implemenation:
@@ -51,27 +50,26 @@
  *                      ; move float_32 value to dest.
  */
 
-#define TILEGX_F_CALC_CVT   0     /* convert int to fsingle */
-#define TILEGX_F_CALC_NCVT  1     /* Not convertion */
+#define GUARDBITS  4
 
-static uint32_t get_f32_exp(float32 f)
+static int get_f32_exp(uint32_t f)
 {
-    return extract32(float32_val(f), 23, 8);
+    return extract32(f, 23, 8);
 }
 
-static void set_f32_exp(float32 *f, uint32_t exp)
+static uint32_t get_f32_man(uint32_t f)
 {
-    *f = make_float32(deposit32(float32_val(*f), 23, 8, exp));
+    return extract32(f, 0, 23);
 }
 
-static uint32_t get_f32_man(float32 f)
+static int get_f32_sign(uint32_t f)
 {
-    return float32_val(f) & 0x7fffff;
+    return extract32(f, 31, 1);
 }
 
-static float32 create_f32_man(uint32_t man)
+static uint32_t make_f32(uint32_t sign, uint32_t exp, uint32_t man)
 {
-     return make_float32(man & 0x7fffff);
+    return (sign << 31) | (exp << 23) | man;
 }
 
 static inline uint32_t get_fsingle_exp(uint64_t n)
@@ -79,134 +77,139 @@ static inline uint32_t get_fsingle_exp(uint64_t n)
     return n & 0xff;
 }
 
-static inline uint64_t create_fsingle_exp(uint32_t exp)
+static inline uint64_t set_fsingle_exp(uint64_t n, int exp)
 {
-    return exp & 0xff;
+    return deposit64(n, 0, 8, exp);
 }
 
 static inline uint32_t get_fsingle_sign(uint64_t n)
 {
-    return test_bit(10, &n);
+    return extract32(n, 10, 1);
 }
 
-static inline void set_fsingle_sign(uint64_t *n)
+static inline uint64_t set_fsingle_sign(uint64_t n, int s)
 {
-    set_bit(10, n);
+    return deposit64(n, 10, 1, s);
 }
 
-static inline unsigned int get_fsingle_calc(uint64_t n)
+static inline uint32_t get_fsingle_man(uint64_t n)
 {
-    return test_bit(11, &n);
+    return extract64(n, 32, 32);
 }
 
-static inline void set_fsingle_calc(uint64_t *n, uint32_t calc)
+static inline uint64_t set_fsingle_man(uint64_t n, uint32_t man)
 {
-    set_bit(11, n);
+    return deposit64(n, 32, 32, man);
 }
 
-static inline unsigned int get_fsingle_man(uint64_t n)
+uint64_t helper_fsingle_pack2(CPUTLGState *env, uint64_t sfmt)
 {
-    return n >> 32;
-}
-
-static inline uint64_t create_fsingle_man(uint32_t man)
-{
-    return (uint64_t)man << 32;
-}
-
-static uint64_t float32_to_sfmt(float32 f)
-{
-    uint64_t sfmt = 0;
-
-    if (float32_is_neg(f)) {
-        set_fsingle_sign(&sfmt);
-    }
-    sfmt |= create_fsingle_exp(get_f32_exp(f));
-    sfmt |= create_fsingle_man((get_f32_man(f) << 8) | (1 << 31));
-
-    return sfmt;
-}
-
-static float32 sfmt_to_float32(uint64_t sfmt, float_status *fp_status)
-{
-    float32 f;
-    uint32_t sign = get_fsingle_sign(sfmt);
     uint32_t man = get_fsingle_man(sfmt);
+    int exp = get_fsingle_exp(sfmt);
 
-    if (get_fsingle_calc(sfmt) == TILEGX_F_CALC_CVT) {
-        if (sign) {
-            return int32_to_float32(0 - man, fp_status);
-        } else {
-            return uint32_to_float32(man, fp_status);
+    if (exp == 0xff) {
+        /* Inf and NaN, pre-encoded.  */
+        man >>= GUARDBITS;
+    } else if (man == 0) {
+        /* Since we've excluded Inf, this must be 0.  */
+        exp = 0;
+    } else {
+        /* Normalize, placing the implicit bit at bit 28.  */
+        int shift = clz32(man) - 3;
+        if (shift < 0) {
+            man = (man >> -shift) | ((man << (shift & 31)) != 0);
+            exp += -shift;
+        } else if (shift > 0) {
+            man <<= shift;
+            exp -= shift;
         }
-    } else {
-        f = float32_set_sign(float32_zero, sign);
-        f |= create_f32_man(man >> 8);
-        set_f32_exp(&f, get_fsingle_exp(sfmt));
+
+        /* Round to nearest, even.  */
+        if ((man & ((1u << (GUARDBITS + 1)) - 1)) != (1 << (GUARDBITS - 1))) {
+            man += 1 << (GUARDBITS - 1);
+            /* Re-normalize if required.  */
+            if (man & (1u << 29)) {
+                man >>= 1;
+                exp += 1;
+            }
+        }
+
+        /* Check for overflow and underflow.  */
+        if (exp >= 0xff) {
+            /* Overflow to Inf.  */
+            exp = 0xff;
+            man = 0;
+        } else if (exp < 1) {
+            if (exp < -24) {
+                /* Underflow to zero.  */
+                man = 0;
+            } else {
+                /* Denormal result.  Clear and remove guard bits.  */
+                man &= ~0xfu;
+                man >>= GUARDBITS - exp;
+            }
+            exp = 0;
+        } else {
+            /* Normal result.  Remove guard bits and implicit bit.  */
+            man = (man >> GUARDBITS) & 0x7fffff;
+        }
     }
 
-    return f;
+    return make_f32(get_fsingle_sign(sfmt), exp, man);
 }
 
-uint64_t helper_fsingle_pack2(CPUTLGState *env, uint64_t srca)
-{
-    return float32_val(sfmt_to_float32(srca, &env->fp_status));
-}
-
-static void ana_bits(float_status *fp_status,
-                     float32 fsrca, float32 fsrcb, uint64_t *sfmt)
-{
-    if (float32_eq(fsrca, fsrcb, fp_status)) {
-        *sfmt |= create_fsfd_flag_eq();
-    } else {
-        *sfmt |= create_fsfd_flag_ne();
-    }
-
-    if (float32_lt(fsrca, fsrcb, fp_status)) {
-        *sfmt |= create_fsfd_flag_lt();
-    }
-    if (float32_le(fsrca, fsrcb, fp_status)) {
-        *sfmt |= create_fsfd_flag_le();
-    }
-
-    if (float32_lt(fsrcb, fsrca, fp_status)) {
-        *sfmt |= create_fsfd_flag_gt();
-    }
-    if (float32_le(fsrcb, fsrca, fp_status)) {
-        *sfmt |= create_fsfd_flag_ge();
-    }
-
-    if (float32_unordered(fsrca, fsrcb, fp_status)) {
-        *sfmt |= create_fsfd_flag_un();
-    }
-}
-
-static uint64_t main_calc(float_status *fp_status,
-                          float32 fsrca, float32 fsrcb,
+static uint64_t main_calc(uint32_t a, uint32_t b,
                           float32 (*calc)(float32, float32, float_status *))
 {
-    uint64_t sfmt = float32_to_sfmt(calc(fsrca, fsrcb, fp_status));
+    float_status fps = { .float_rounding_mode = float_round_nearest_even };
+    float32 fa = make_float32(a);
+    float32 fb = make_float32(b);
 
-    ana_bits(fp_status, fsrca, fsrcb, &sfmt);
+    /* Cheat and perform the entire operation in one go.  */
+    uint32_t result = float32_val(calc(fa, fb, &fps));
+    uint64_t sfmt;
 
-    set_fsingle_calc(&sfmt, TILEGX_F_CALC_NCVT);
+    /* Format the result into the internal format.  */
+    uint32_t exp = get_f32_exp(result);
+    uint32_t man = get_f32_man(result);
+    if (exp != 0 && exp != 0xff) {
+        man |= 1u << 24;
+    }
+    man <<= GUARDBITS;
+
+    sfmt = set_fsingle_man(0, man);
+    sfmt = set_fsingle_exp(sfmt, exp);
+    sfmt = set_fsingle_sign(sfmt, get_f32_sign(result));
+
+    /* Compute comparison bits for the original inputs.  */
+    if (float32_unordered(fa, fb, &fps)) {
+        sfmt |= FSFD_FLAG_UN | FSFD_FLAG_NE;
+    } else {
+        sfmt |= (float32_eq(fa, fb, &fps)
+                 ? FSFD_FLAG_EQ | FSFD_FLAG_LE | FSFD_FLAG_GE
+                 : FSFD_FLAG_NE);
+        sfmt |= (float32_lt(fa, fb, &fps)
+                 ? FSFD_FLAG_LT | FSFD_FLAG_LE
+                 : FSFD_FLAG_GE);
+        if (!(sfmt & FSFD_FLAG_LE)) {
+            sfmt |= FSFD_FLAG_GT;
+        }
+    }
+
     return sfmt;
 }
 
 uint64_t helper_fsingle_add1(CPUTLGState *env, uint64_t srca, uint64_t srcb)
 {
-    return main_calc(&env->fp_status,
-                     make_float32(srca), make_float32(srcb), float32_add);
+    return main_calc(srca, srcb, float32_add);
 }
 
 uint64_t helper_fsingle_sub1(CPUTLGState *env, uint64_t srca, uint64_t srcb)
 {
-    return main_calc(&env->fp_status,
-                     make_float32(srca), make_float32(srcb), float32_sub);
+    return main_calc(srca, srcb, float32_sub);
 }
 
 uint64_t helper_fsingle_mul1(CPUTLGState *env, uint64_t srca, uint64_t srcb)
 {
-    return main_calc(&env->fp_status,
-                     make_float32(srca), make_float32(srcb), float32_mul);
+    return main_calc(srca, srcb, float32_mul);
 }

@@ -17,37 +17,10 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-static inline uint64_t create_fsfd_flag_un(void)
-{
-    return 1 << 25;
-}
-
-static inline uint64_t create_fsfd_flag_lt(void)
-{
-    return 1 << 26;
-}
-
-static inline uint64_t create_fsfd_flag_le(void)
-{
-    return 1 << 27;
-}
-
-static inline uint64_t create_fsfd_flag_gt(void)
-{
-    return 1 << 28;
-}
-
-static inline uint64_t create_fsfd_flag_ge(void)
-{
-    return 1 << 29;
-}
-
-static inline uint64_t create_fsfd_flag_eq(void)
-{
-    return 1 << 30;
-}
-
-static inline uint64_t create_fsfd_flag_ne(void)
-{
-    return 1ULL << 31;
-}
+#define FSFD_FLAG_UN    (1u << 25)
+#define FSFD_FLAG_LT    (1u << 26)
+#define FSFD_FLAG_LE    (1u << 27)
+#define FSFD_FLAG_GT    (1u << 28)
+#define FSFD_FLAG_GE    (1u << 29)
+#define FSFD_FLAG_EQ    (1u << 30)
+#define FSFD_FLAG_NE    (1u << 30)
