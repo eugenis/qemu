@@ -80,15 +80,11 @@ SSE_HELPER_B(pcmpeqb, FCMPEQ)
 SSE_HELPER_W(pcmpeqw, FCMPEQ)
 SSE_HELPER_L(pcmpeql, FCMPEQ)
 
-SSE_HELPER_W(pmullw, FMULLW)
 #if SHIFT == 0
 SSE_HELPER_W(pmulhrw, FMULHRW)
 #endif
-SSE_HELPER_W(pmulhuw, FMULHUW)
-SSE_HELPER_W(pmulhw, FMULHW)
 
 SSE_HELPER_B(pavgb, FAVG)
-SSE_HELPER_W(pavgw, FAVG)
 
 DEF_HELPER_3(glue(pmuludq, SUFFIX), void, env, Reg, Reg)
 DEF_HELPER_3(glue(pmaddwd, SUFFIX), void, env, Reg, Reg)

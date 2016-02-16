@@ -30,6 +30,22 @@
 #define V4(X)      (((X) & 0xffffffffu) * 0x0000000100000001ull)
 
 
+/* Allow HELPER_BY_PARTS to use 's' or 'u' as the EXTR prefix.  */
+#define uextract64  extract64
+
+#define HELPER_BY_PARTS(NAME, SIZE, EXTR, EXPR)		\
+uint64_t helper_vec_##NAME(uint64_t va, uint64_t vb)	\
+{							\
+    uint64_t ret = 0;					\
+    int i;						\
+    for (i = 0; i < 64; i += SIZE) {			\
+        int a = EXTR##extract64(va, i, SIZE);		\
+        int b = EXTR##extract64(vb, i, SIZE);		\
+        ret = deposit64(ret, i, SIZE, EXPR);		\
+    }							\
+    return ret;						\
+}
+
 uint64_t helper_vec_addb(uint64_t a, uint64_t b)
 {
     uint64_t m = V1(0x7f);
@@ -47,6 +63,13 @@ uint64_t helper_vec_addd(uint64_t a, uint64_t b)
     uint64_t m = 0xffffffffu;
     return ((a & ~m) + (b & ~m)) | ((a + b) & m);
 }
+
+HELPER_BY_PARTS(avgb, 8, u, (a + b + 1) >> 1)
+HELPER_BY_PARTS(avgw, 16, u, (a + b + 1) >> 1)
+
+HELPER_BY_PARTS(mulhw, 16, s, (a * b) >> 16)
+HELPER_BY_PARTS(mulhuw, 16, u, (a * b) >> 16)
+HELPER_BY_PARTS(mullw, 16, u, a * b)
 
 uint64_t helper_vec_sllw(uint64_t part, uint64_t shift)
 {

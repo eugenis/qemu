@@ -238,15 +238,11 @@ SSE_HELPER_B(helper_pcmpeqb, FCMPEQ)
 SSE_HELPER_W(helper_pcmpeqw, FCMPEQ)
 SSE_HELPER_L(helper_pcmpeql, FCMPEQ)
 
-SSE_HELPER_W(helper_pmullw, FMULLW)
 #if SHIFT == 0
 SSE_HELPER_W(helper_pmulhrw, FMULHRW)
 #endif
-SSE_HELPER_W(helper_pmulhuw, FMULHUW)
-SSE_HELPER_W(helper_pmulhw, FMULHW)
 
 SSE_HELPER_B(helper_pavgb, FAVG)
-SSE_HELPER_W(helper_pavgw, FAVG)
 
 void glue(helper_pmuludq, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 {

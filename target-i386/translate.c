@@ -2748,7 +2748,7 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0xd2] = { SSE_SPECIAL, SSE_SPECIAL }, /* psrld */
     [0xd3] = { SSE_SPECIAL, SSE_SPECIAL }, /* psrlq */
     [0xd4] = { SSE_SPECIAL, SSE_SPECIAL }, /* paddq */
-    [0xd5] = MMX_OP2(pmullw),
+    [0xd5] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmullw */
     [0xd6] = { NULL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL },
     [0xd7] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmovmskb */
     [0xd8] = MMX_OP2(psubusb),
@@ -2759,12 +2759,12 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0xdd] = MMX_OP2(paddusw),
     [0xde] = MMX_OP2(pmaxub),
     [0xdf] = { SSE_SPECIAL, SSE_SPECIAL }, /* pandn */
-    [0xe0] = MMX_OP2(pavgb),
+    [0xe0] = { SSE_SPECIAL, SSE_SPECIAL }, /* pavgb */
     [0xe1] = { SSE_SPECIAL, SSE_SPECIAL }, /* psraw */
     [0xe2] = { SSE_SPECIAL, SSE_SPECIAL }, /* psrad */
-    [0xe3] = MMX_OP2(pavgw),
-    [0xe4] = MMX_OP2(pmulhuw),
-    [0xe5] = MMX_OP2(pmulhw),
+    [0xe3] = { SSE_SPECIAL, SSE_SPECIAL }, /* pavgw */
+    [0xe4] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmulhuw */
+    [0xe5] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmulhw */
     [0xe6] = { NULL, gen_helper_cvttpd2dq, gen_helper_cvtdq2pd, gen_helper_cvtpd2dq },
     [0xe7] = { SSE_SPECIAL , SSE_SPECIAL },  /* movntq, movntq */
     [0xe8] = MMX_OP2(psubsb),
@@ -4677,6 +4677,13 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         do_xmm_binary(s, &data, tcg_gen_add_i64);
         break;
 
+    case OP(d5,00): /* pmullw mm */
+        do_mmx_binary(s, &data, gen_helper_vec_mullw);
+        break;
+    case OP(d5,66): /* pmullw xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_mullw);
+        break;
+
     case OP(db,00): /* pand mm */
         do_mmx_binary(s, &data, tcg_gen_and_i64);
         break;
@@ -4695,6 +4702,13 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         do_xmm_binary(s, &data, gen_andn_i64);
         break;
 
+    case OP(e0,00): /* pavgb mm */
+        do_mmx_binary(s, &data, gen_helper_vec_avgb);
+        break;
+    case OP(e0,66): /* pavgb xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_avgb);
+        break;
+
     case OP(e1,00): /* psraw mm */
         do_mmx_binary(s, &data, gen_helper_vec_sraw);
         break;
@@ -4707,6 +4721,27 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
     case OP(e2,66): /* psrad xmm */
         do_xmm_binary_scalar(s, &data, gen_helper_vec_srad);
+        break;
+
+    case OP(e3,00): /* pavgw mm */
+        do_mmx_binary(s, &data, gen_helper_vec_avgw);
+        break;
+    case OP(e3,66): /* pavgw xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_avgw);
+        break;
+
+    case OP(e4,00): /* pmulhuw mm */
+        do_mmx_binary(s, &data, gen_helper_vec_mulhuw);
+        break;
+    case OP(e4,66): /* pmulhuw xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_mulhuw);
+        break;
+
+    case OP(e5,00): /* pmulhw mm */
+        do_mmx_binary(s, &data, gen_helper_vec_mulhw);
+        break;
+    case OP(e5,66): /* pmulhw xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_mulhw);
         break;
 
     case OP(eb,00): /* por mm */
