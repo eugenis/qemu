@@ -2733,10 +2733,13 @@ static void x86_cpu_reset(CPUState *s)
     if (env->features[FEAT_1_EDX] & CPUID_SSE) {
         xcr0 |= XSTATE_SSE_MASK;
     }
-    for (i = 2; i < ARRAY_SIZE(x86_ext_save_areas); i++) {
-        const ExtSaveArea *esa = &x86_ext_save_areas[i];
-        if ((env->features[esa->feature] & esa->bits) == esa->bits) {
-            xcr0 |= 1ull << i;
+    {
+        int i;
+        for (i = 2; i < ARRAY_SIZE(x86_ext_save_areas); i++) {
+            const ExtSaveArea *esa = &x86_ext_save_areas[i];
+            if ((env->features[esa->feature] & esa->bits) == esa->bits) {
+                xcr0 |= 1ull << i;
+            }
         }
     }
 

@@ -33,10 +33,16 @@
 
 #define PREFIX_REPZ   0x01
 #define PREFIX_REPNZ  0x02
-#define PREFIX_LOCK   0x04
-#define PREFIX_DATA   0x08
-#define PREFIX_ADR    0x10
+#define PREFIX_DATA   0x04
+#define PREFIX_ADR    0x08
+#define PREFIX_LOCK   0x10
 #define PREFIX_VEX    0x20
+
+/* Make things more readable for e.g. SSE decoding.  */
+#define PREFIX_00     0
+#define PREFIX_66     PREFIX_DATA
+#define PREFIX_F2     PREFIX_REPNZ
+#define PREFIX_F3     PREFIX_REPZ
 
 #ifdef TARGET_X86_64
 #define CODE64(s) ((s)->code64)
@@ -2061,11 +2067,17 @@ static TCGv gen_lea_modrm_1(AddressParts a)
     return ea;
 }
 
-static void gen_lea_modrm(DisasContext *s, int modrm)
+static void gen_lea_modrm_ofs(DisasContext *s, int modrm, target_long ofs)
 {
     AddressParts a = gen_lea_modrm_0(s, modrm);
+    a.disp += ofs;
     TCGv ea = gen_lea_modrm_1(a);
     gen_lea_v_seg(s, s->aflag, ea, a.def_seg, s->override);
+}
+
+static void gen_lea_modrm(DisasContext *s, int modrm)
+{
+    gen_lea_modrm_ofs(s, modrm, 0);
 }
 
 static void gen_nop_modrm(DisasContext *s, int modrm)
@@ -2673,10 +2685,10 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0x51] = SSE_FOP(sqrt),
     [0x52] = { gen_helper_rsqrtps, NULL, gen_helper_rsqrtss, NULL },
     [0x53] = { gen_helper_rcpps, NULL, gen_helper_rcpss, NULL },
-    [0x54] = { gen_helper_pand_xmm, gen_helper_pand_xmm }, /* andps, andpd */
-    [0x55] = { gen_helper_pandn_xmm, gen_helper_pandn_xmm }, /* andnps, andnpd */
-    [0x56] = { gen_helper_por_xmm, gen_helper_por_xmm }, /* orps, orpd */
-    [0x57] = { gen_helper_pxor_xmm, gen_helper_pxor_xmm }, /* xorps, xorpd */
+    [0x54] = { SSE_SPECIAL, SSE_SPECIAL }, /* andps, andpd */
+    [0x55] = { SSE_SPECIAL, SSE_SPECIAL }, /* andnps, andnpd */
+    [0x56] = { SSE_SPECIAL, SSE_SPECIAL }, /* orps, orpd */
+    [0x57] = { SSE_SPECIAL, SSE_SPECIAL }, /* xorps, xorpd */
     [0x58] = SSE_FOP(add),
     [0x59] = SSE_FOP(mul),
     [0x5a] = { gen_helper_cvtps2pd, gen_helper_cvtpd2ps,
@@ -2732,24 +2744,24 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0xc4] = { SSE_SPECIAL, SSE_SPECIAL }, /* pinsrw */
     [0xc5] = { SSE_SPECIAL, SSE_SPECIAL }, /* pextrw */
     [0xd0] = { NULL, gen_helper_addsubpd, NULL, gen_helper_addsubps },
-    [0xd1] = MMX_OP2(psrlw),
-    [0xd2] = MMX_OP2(psrld),
-    [0xd3] = MMX_OP2(psrlq),
-    [0xd4] = MMX_OP2(paddq),
+    [0xd1] = { SSE_SPECIAL, SSE_SPECIAL }, /* psrlw */
+    [0xd2] = { SSE_SPECIAL, SSE_SPECIAL }, /* psrld */
+    [0xd3] = { SSE_SPECIAL, SSE_SPECIAL }, /* psrlq */
+    [0xd4] = { SSE_SPECIAL, SSE_SPECIAL }, /* paddq */
     [0xd5] = MMX_OP2(pmullw),
     [0xd6] = { NULL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL },
     [0xd7] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmovmskb */
     [0xd8] = MMX_OP2(psubusb),
     [0xd9] = MMX_OP2(psubusw),
     [0xda] = MMX_OP2(pminub),
-    [0xdb] = MMX_OP2(pand),
+    [0xdb] = { SSE_SPECIAL, SSE_SPECIAL }, /* pand */
     [0xdc] = MMX_OP2(paddusb),
     [0xdd] = MMX_OP2(paddusw),
     [0xde] = MMX_OP2(pmaxub),
-    [0xdf] = MMX_OP2(pandn),
+    [0xdf] = { SSE_SPECIAL, SSE_SPECIAL }, /* pandn */
     [0xe0] = MMX_OP2(pavgb),
-    [0xe1] = MMX_OP2(psraw),
-    [0xe2] = MMX_OP2(psrad),
+    [0xe1] = { SSE_SPECIAL, SSE_SPECIAL }, /* psraw */
+    [0xe2] = { SSE_SPECIAL, SSE_SPECIAL }, /* psrad */
     [0xe3] = MMX_OP2(pavgw),
     [0xe4] = MMX_OP2(pmulhuw),
     [0xe5] = MMX_OP2(pmulhw),
@@ -2758,15 +2770,15 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0xe8] = MMX_OP2(psubsb),
     [0xe9] = MMX_OP2(psubsw),
     [0xea] = MMX_OP2(pminsw),
-    [0xeb] = MMX_OP2(por),
+    [0xeb] = { SSE_SPECIAL, SSE_SPECIAL }, /* por */
     [0xec] = MMX_OP2(paddsb),
     [0xed] = MMX_OP2(paddsw),
     [0xee] = MMX_OP2(pmaxsw),
-    [0xef] = MMX_OP2(pxor),
+    [0xef] = { SSE_SPECIAL, SSE_SPECIAL }, /* pxor */
     [0xf0] = { NULL, NULL, NULL, SSE_SPECIAL }, /* lddqu */
-    [0xf1] = MMX_OP2(psllw),
-    [0xf2] = MMX_OP2(pslld),
-    [0xf3] = MMX_OP2(psllq),
+    [0xf1] = { SSE_SPECIAL, SSE_SPECIAL }, /* psllw */
+    [0xf2] = { SSE_SPECIAL, SSE_SPECIAL }, /* pslld */
+    [0xf3] = { SSE_SPECIAL, SSE_SPECIAL }, /* psllq */
     [0xf4] = MMX_OP2(pmuludq),
     [0xf5] = MMX_OP2(pmaddwd),
     [0xf6] = MMX_OP2(psadbw),
@@ -2776,21 +2788,13 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0xf9] = MMX_OP2(psubw),
     [0xfa] = MMX_OP2(psubl),
     [0xfb] = MMX_OP2(psubq),
-    [0xfc] = MMX_OP2(paddb),
-    [0xfd] = MMX_OP2(paddw),
-    [0xfe] = MMX_OP2(paddl),
+    [0xfc] = { SSE_SPECIAL, SSE_SPECIAL }, /* paddb */
+    [0xfd] = { SSE_SPECIAL, SSE_SPECIAL }, /* paddw */
+    [0xfe] = { SSE_SPECIAL, SSE_SPECIAL }, /* paddd */
 };
 
 static const SSEFunc_0_epp sse_op_table2[3 * 8][2] = {
-    [0 + 2] = MMX_OP2(psrlw),
-    [0 + 4] = MMX_OP2(psraw),
-    [0 + 6] = MMX_OP2(psllw),
-    [8 + 2] = MMX_OP2(psrld),
-    [8 + 4] = MMX_OP2(psrad),
-    [8 + 6] = MMX_OP2(pslld),
-    [16 + 2] = MMX_OP2(psrlq),
     [16 + 3] = { NULL, gen_helper_psrldq_xmm },
-    [16 + 6] = MMX_OP2(psllq),
     [16 + 7] = { NULL, gen_helper_pslldq_xmm },
 };
 
@@ -2959,6 +2963,243 @@ static const struct SSEOpHelper_eppi sse_op_table7[256] = {
     [0xdf] = AESNI_OP(aeskeygenassist),
 };
 
+typedef struct VecData VecData;
+
+typedef void (*func_unary)(TCGv_i64, TCGv_i64);
+typedef void (*func_unary_ss)(TCGv_i32, TCGv_ptr, TCGv_i32);
+typedef void (*func_unary_env)(TCGv_i64, TCGv_ptr, TCGv_i64);
+
+typedef void (*func_binary)(TCGv_i64, TCGv_i64, TCGv_i64);
+typedef void (*func_binary_ss)(TCGv_i32, TCGv_ptr, TCGv_i32, TCGv_i32);
+typedef void (*func_binary_env)(TCGv_i64, TCGv_ptr, TCGv_i64, TCGv_i64);
+
+typedef void (*func_comi_ss)(TCGv, TCGv_ptr, TCGv_i32, TCGv_i32);
+typedef void (*func_comi_sd)(TCGv, TCGv_ptr, TCGv_i64, TCGv_i64);
+
+typedef void (*func_apply)(DisasContext *s, VecData *data);
+
+#define VEC_MAX 2
+
+#define VEC_ARG_32      1
+#define VEC_ARG_0       2
+#define VEC_ARG_1       4
+#define VEC_ARG_N       (VEC_ARG_0 | VEC_ARG_1)
+
+union VecArg {
+    TCGv_i32 s;
+    TCGv_i64 q[VEC_MAX];
+};
+
+struct VecData {
+    unsigned modrm : 8;
+    unsigned outf : 8;
+    unsigned in1f : 8;
+    unsigned in2f : 8;
+    union VecArg out;
+    union VecArg in1;
+    union VecArg in2;
+};
+
+static void prep_output(VecData *data, int flags)
+{
+    data->outf = flags;
+    if (flags & VEC_ARG_32) {
+        data->out.s = tcg_temp_new_i32();
+    } else {
+        if (flags & VEC_ARG_0) {
+            data->out.q[0] = tcg_temp_new_i64();
+        }
+        if (flags & VEC_ARG_1) {
+            data->out.q[1] = tcg_temp_new_i64();
+        }
+    }
+}
+
+static void free_vecarg(union VecArg *arg, int flags)
+{
+    if (flags & VEC_ARG_32) {
+        tcg_temp_free_i32(arg->s);
+    } else {
+        if (flags & VEC_ARG_0) {
+            tcg_temp_free_i64(arg->q[0]);
+        }
+        if (flags & VEC_ARG_1) {
+            tcg_temp_free_i64(arg->q[1]);
+        }
+    }
+}
+
+static void free_vecdata(VecData *data)
+{
+    free_vecarg(&data->out, data->outf);
+    free_vecarg(&data->in1, data->in1f);
+    free_vecarg(&data->in2, data->in2f);
+}
+
+static void st_mmx_dest(DisasContext *s, VecData *data)
+{
+    int reg = (data->modrm >> 3) & 7;
+    tcg_gen_st_i64(data->out.q[0], cpu_env,
+                   offsetof(CPUX86State, fpregs[reg].mmx));
+    gen_enter_mmx(s);
+}
+
+static void finish_mmx(DisasContext *s, VecData *data)
+{
+    st_mmx_dest(s, data);
+    free_vecdata(data);
+}
+
+static void ld_mmx_src1(DisasContext *s, VecData *data)
+{
+    int reg = (data->modrm >> 3) & 7;
+    TCGv_i64 t;
+
+    data->in1f = VEC_ARG_0;
+    gen_enter_mmx(s);
+    data->in1.q[0] = t = tcg_temp_new_i64();
+    tcg_gen_ld_i64(t, cpu_env, offsetof(CPUX86State, fpregs[reg].mmx));
+}
+
+static void ld_mmx_src2(DisasContext *s, VecData *data)
+{
+    int modrm = data->modrm;
+    int mod = (modrm >> 6) & 3;
+    TCGv_i64 t;
+
+    data->in2f = VEC_ARG_0;
+    gen_enter_mmx(s);
+    data->in2.q[0] = t = tcg_temp_new_i64();
+    if (mod == 3) {
+        int rm = (modrm & 7);
+        tcg_gen_ld_i64(t, cpu_env, offsetof(CPUX86State, fpregs[rm].mmx));
+    } else {
+        gen_lea_modrm(s, modrm);
+        tcg_gen_qemu_ld_i64(t, cpu_A0, s->mem_index, MO_LEQ);
+    }
+}
+
+static void prep_mmx_binary(DisasContext *s, VecData *data)
+{
+    ld_mmx_src2(s, data);
+    ld_mmx_src1(s, data);
+    prep_output(data, VEC_ARG_0);
+}
+
+static void st_xmm_dest(DisasContext *s, VecData *data)
+{
+    int reg = ((data->modrm >> 3) & 7) | REX_R(s);
+    int flags = data->outf;
+
+    if (flags & VEC_ARG_0) {
+        tcg_gen_st_i64(data->out.q[0], cpu_env,
+                       offsetof(CPUX86State, xmm_regs[reg].ZMM_Q(0)));
+    }
+    if (flags & VEC_ARG_0) {
+        tcg_gen_st_i64(data->out.q[1], cpu_env,
+                       offsetof(CPUX86State, xmm_regs[reg].ZMM_Q(1)));
+    }
+}
+
+static void finish_xmm(DisasContext *s, VecData *data)
+{
+    st_xmm_dest(s, data);
+    free_vecdata(data);
+}
+
+static void ld_xmm_src1(DisasContext *s, VecData *data, int flags)
+{
+    int reg = ((data->modrm >> 3) & 7) | REX_R(s);
+    TCGv_i64 t;
+
+    data->in1f = flags;
+    if (flags & VEC_ARG_0) {
+        data->in1.q[0] = t = tcg_temp_new_i64();
+        tcg_gen_ld_i64(t, cpu_env,
+                       offsetof(CPUX86State, xmm_regs[reg].ZMM_Q(0)));
+    }
+    if (flags & VEC_ARG_1) {
+        data->in1.q[1] = t = tcg_temp_new_i64();
+        tcg_gen_ld_i64(t, cpu_env,
+                       offsetof(CPUX86State, xmm_regs[reg].ZMM_Q(1)));
+    }
+}
+
+static void ld_xmm_src2(DisasContext *s, VecData *data, int flags)
+{
+    int modrm = data->modrm;
+    int mod = (modrm >> 6) & 3;
+    TCGv_i64 t;
+
+    data->in2f = flags;
+    if (mod == 3) {
+        int rm = (modrm & 7) | REX_B(s);
+        if (flags & VEC_ARG_0) {
+            data->in2.q[0] = t = tcg_temp_new_i64();
+            tcg_gen_ld_i64(t, cpu_env,
+                           offsetof(CPUX86State, xmm_regs[rm].ZMM_Q(0)));
+        }
+        if (flags & VEC_ARG_1) {
+            data->in2.q[1] = t = tcg_temp_new_i64();
+            tcg_gen_ld_i64(t, cpu_env,
+                           offsetof(CPUX86State, xmm_regs[rm].ZMM_Q(1)));
+        }
+    } else {
+        if (flags & VEC_ARG_0) {
+            gen_lea_modrm(s, modrm);
+            data->in2.q[0] = t = tcg_temp_new_i64();
+            tcg_gen_qemu_ld_i64(t, cpu_A0, s->mem_index, MO_LEQ);
+            if (flags & VEC_ARG_1) {
+                tcg_gen_addi_tl(cpu_A0, cpu_A0, 8);
+                data->in2.q[1] = t = tcg_temp_new_i64();
+                tcg_gen_qemu_ld_i64(t, cpu_A0, s->mem_index, MO_LEQ);
+            }
+        } else {
+            gen_lea_modrm_ofs(s, modrm, 8);
+            data->in2.q[1] = t = tcg_temp_new_i64();
+            tcg_gen_qemu_ld_i64(t, cpu_A0, s->mem_index, MO_LEQ);
+        }
+    }
+}
+
+static void prep_xmm_binary(DisasContext *s, VecData *data,
+                            int outf, int in1f, int in2f)
+{
+    ld_xmm_src2(s, data, in2f);
+    ld_xmm_src1(s, data, in1f);
+    prep_output(data, outf);
+}
+
+static void do_mmx_binary(DisasContext *s, VecData *data, func_binary func)
+{
+    prep_mmx_binary(s, data);
+    func(data->out.q[0], data->in1.q[0], data->in2.q[0]);
+    finish_mmx(s, data);
+}
+
+static void do_xmm_binary(DisasContext *s, VecData *data, func_binary func)
+{
+    prep_xmm_binary(s, data, VEC_ARG_N, VEC_ARG_N, VEC_ARG_N);
+    func(data->out.q[0], data->in1.q[0], data->in2.q[0]);
+    func(data->out.q[1], data->in1.q[1], data->in2.q[1]);
+    finish_xmm(s, data);
+}
+
+static void do_xmm_binary_scalar(DisasContext *s, VecData *data,
+                                 func_binary func)
+{
+    prep_xmm_binary(s, data, VEC_ARG_N, VEC_ARG_N, VEC_ARG_0);
+    func(data->out.q[0], data->in1.q[0], data->in2.q[0]);
+    func(data->out.q[1], data->in1.q[1], data->in2.q[0]);
+    finish_xmm(s, data);
+}
+
+/* The sse andn instructions invert the first argument, not the second.  */
+static void gen_andn_i64(TCGv_i64 r, TCGv_i64 a, TCGv_i64 b)
+{
+    tcg_gen_andc_i64(r, b, a);
+}
+
 static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
 {
     int b1, op1_offset, op2_offset, is_xmm, val;
@@ -2970,14 +3211,15 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
     TCGMemOp ot;
 
     b &= 0xff;
-    if (s->prefix & PREFIX_DATA)
+    if (s->prefix & PREFIX_66) {
         b1 = 1;
-    else if (s->prefix & PREFIX_REPZ)
+    } else if (s->prefix & PREFIX_F3) {
         b1 = 2;
-    else if (s->prefix & PREFIX_REPNZ)
+    } else if (s->prefix & PREFIX_F2) {
         b1 = 3;
-    else
+    } else {
         b1 = 0;
+    }
     sse_fn_epp = sse_op_table1[b][b1];
     if (!sse_fn_epp) {
         goto unknown_op;
@@ -2998,9 +3240,7 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         return;
     }
     if (s->flags & HF_EM_MASK) {
-    illegal_op:
-        gen_illegal_opcode(s);
-        return;
+        goto illegal_op;
     }
     if (is_xmm
         && !(s->flags & HF_OSFXSR_MASK)
@@ -4258,11 +4498,6 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
                 goto unknown_op;
             }
             break;
-
-        default:
-        unknown_op:
-            gen_unknown_opcode(s);
-            return;
         }
     } else {
         /* generic MMX or SSE operation */
@@ -4395,7 +4630,154 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         if (b == 0x2e || b == 0x2f) {
             set_cc_op(s, CC_OP_EFLAGS);
         }
+        return;
     }
+
+    /* Converted MMX+SSE instructions.  */
+
+    VecData data;
+    memset(&data, -1, sizeof(data));
+    data.modrm = modrm;
+
+    b &= 0xff;
+    /* Isolate the "first" prefix, with ordering F3, F2, 66.
+       Note that F3 must be preferred over 66 for crc32 vs movbe;
+       I'm uncertain if it matters for any of the others...  */
+    b1 = s->prefix & (PREFIX_66 | PREFIX_F2 | PREFIX_F3);
+    b1 = (b1 & -b1);
+
+#define OP(O,P)   (0x##O * 8 + PREFIX_##P)
+
+    switch (b * 8 + b1) {
+    case OP(d1,00): /* psrlw mm */
+        do_mmx_binary(s, &data, gen_helper_vec_srlw);
+        break;
+    case OP(d1,66): /* psrlw xmm */
+        do_xmm_binary_scalar(s, &data, gen_helper_vec_srlw);
+        break;
+
+    case OP(d2,00): /* psrld mm */
+        do_mmx_binary(s, &data, gen_helper_vec_srld);
+        break;
+    case OP(d2,66): /* psrld xmm */
+        do_xmm_binary_scalar(s, &data, gen_helper_vec_srld);
+        break;
+
+    case OP(d3,00): /* psrlq mm */
+        do_mmx_binary(s, &data, gen_helper_vec_srlq);
+        break;
+    case OP(d3,66): /* psrlq xmm */
+        do_xmm_binary_scalar(s, &data, gen_helper_vec_srlq);
+        break;
+
+    case OP(d4,00): /* paddq mm */
+        do_mmx_binary(s, &data, tcg_gen_add_i64);
+        break;
+    case OP(d4,66): /* paddq xmm */
+        do_xmm_binary(s, &data, tcg_gen_add_i64);
+        break;
+
+    case OP(db,00): /* pand mm */
+        do_mmx_binary(s, &data, tcg_gen_and_i64);
+        break;
+    case OP(54,00): /* andps xmm */
+    case OP(54,66): /* andpd xmm */
+    case OP(db,66): /* pand xmm */
+        do_xmm_binary(s, &data, tcg_gen_and_i64);
+        break;
+
+    case OP(df,00): /* pandn mm */
+        do_mmx_binary(s, &data, gen_andn_i64);
+        break;
+    case OP(55,00): /* andnps xmm */
+    case OP(55,66): /* andnpd xmm */
+    case OP(df,66): /* pandn xmm */
+        do_xmm_binary(s, &data, gen_andn_i64);
+        break;
+
+    case OP(e1,00): /* psraw mm */
+        do_mmx_binary(s, &data, gen_helper_vec_sraw);
+        break;
+    case OP(e1,66): /* psraw xmm */
+        do_xmm_binary_scalar(s, &data, gen_helper_vec_sraw);
+        break;
+
+    case OP(e2,00): /* psrad mm */
+        do_mmx_binary(s, &data, gen_helper_vec_srad);
+        break;
+    case OP(e2,66): /* psrad xmm */
+        do_xmm_binary_scalar(s, &data, gen_helper_vec_srad);
+        break;
+
+    case OP(eb,00): /* por mm */
+        do_mmx_binary(s, &data, tcg_gen_or_i64);
+        break;
+    case OP(56,00): /* orps xmm */
+    case OP(56,66): /* orpd xmm */
+    case OP(eb,66): /* por xmm */
+        do_xmm_binary(s, &data, tcg_gen_or_i64);
+        break;
+
+    case OP(ef,00): /* pxor mm */
+        do_mmx_binary(s, &data, tcg_gen_xor_i64);
+        break;
+    case OP(57,00): /* xorps xmm */
+    case OP(57,66): /* xorpd xmm */
+    case OP(ef,66): /* pxor xmm */
+        do_xmm_binary(s, &data, tcg_gen_xor_i64);
+        break;
+
+    case OP(f1,00): /* psllw mm */
+        do_mmx_binary(s, &data, gen_helper_vec_sllw);
+        break;
+    case OP(f1,66): /* psllw xmm */
+        do_xmm_binary_scalar(s, &data, gen_helper_vec_sllw);
+        break;
+
+    case OP(f2,00): /* pslld mm */
+        do_mmx_binary(s, &data, gen_helper_vec_slld);
+        break;
+    case OP(f2,66): /* pslld xmm */
+        do_xmm_binary_scalar(s, &data, gen_helper_vec_slld);
+        break;
+
+    case OP(f3,00): /* psllq mm */
+        do_mmx_binary(s, &data, gen_helper_vec_sllq);
+        break;
+    case OP(f3,66): /* psllq xmm */
+        do_xmm_binary_scalar(s, &data, gen_helper_vec_sllq);
+        break;
+
+    case OP(fc,00): /* paddb mm */
+        do_mmx_binary(s, &data, gen_helper_vec_addb);
+        break;
+    case OP(fc,66): /* paddb xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_addb);
+        break;
+
+    case OP(fd,00): /* paddw mm */
+        do_mmx_binary(s, &data, gen_helper_vec_addw);
+        break;
+    case OP(fd,66): /* paddw xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_addw);
+        break;
+
+    case OP(fe,00): /* paddd mm */
+        do_mmx_binary(s, &data, gen_helper_vec_addd);
+        break;
+    case OP(fe,66): /* paddd xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_addd);
+        break;
+
+    default:
+    unknown_op:
+        gen_unknown_opcode(s);
+        return;
+    illegal_op:
+        gen_illegal_opcode(s);
+        return;
+    }
+#undef OP
 }
 
 /* convert one instruction. s->is_jmp is set if the translation must
