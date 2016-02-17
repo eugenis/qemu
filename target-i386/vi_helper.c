@@ -29,6 +29,49 @@
 #define V2(X)      (((X) & 0xffff) * 0x0001000100010001ull)
 #define V4(X)      (((X) & 0xffffffffu) * 0x0000000100000001ull)
 
+static inline int satub(int x)
+{
+    if (x < 0) {
+        return 0;
+    } else if (x > 255) {
+        return 255;
+    } else {
+        return x;
+    }
+}
+
+static inline int satuw(int x)
+{
+    if (x < 0) {
+        return 0;
+    } else if (x > 65535) {
+        return 65535;
+    } else {
+        return x;
+    }
+}
+
+static inline int satsb(int x)
+{
+    if (x < -128) {
+        return -128;
+    } else if (x > 127) {
+        return 127;
+    } else {
+        return x;
+    }
+}
+
+static inline int satsw(int x)
+{
+    if (x < -32768) {
+        return -32768;
+    } else if (x > 32767) {
+        return 32767;
+    } else {
+        return x;
+    }
+}
 
 /* Allow HELPER_BY_PARTS to use 's' or 'u' as the EXTR prefix.  */
 #define uextract64  extract64
@@ -63,6 +106,11 @@ uint64_t helper_vec_addd(uint64_t a, uint64_t b)
     uint64_t m = 0xffffffffu;
     return ((a & ~m) + (b & ~m)) | ((a + b) & m);
 }
+
+HELPER_BY_PARTS(addsb, 8, s, satsb(a + b))
+HELPER_BY_PARTS(addsw, 16, s, satsw(a + b))
+HELPER_BY_PARTS(addusb, 8, u, satub(a + b))
+HELPER_BY_PARTS(addusw, 16, u, satuw(a + b))
 
 HELPER_BY_PARTS(avgb, 8, u, (a + b + 1) >> 1)
 HELPER_BY_PARTS(avgw, 16, u, (a + b + 1) >> 1)
@@ -168,3 +216,26 @@ uint64_t helper_vec_srlq(uint64_t part, uint64_t shift)
     }
     return part >> shift;
 }
+
+uint64_t helper_vec_subb(uint64_t a, uint64_t b)
+{
+    uint64_t m = V1(0x80);
+    return ((a | m) - (b & ~m)) ^ ((a ^ ~b) & m);
+}
+
+uint64_t helper_vec_subw(uint64_t a, uint64_t b)
+{
+    uint64_t m = V2(0x8000);
+    return ((a | m) - (b & ~m)) ^ ((a ^ ~b) & m);
+}
+
+uint64_t helper_vec_subd(uint64_t a, uint64_t b)
+{
+    uint64_t m = 0xffffffffu;
+    return ((a & ~m) - (b & ~m)) | ((a - b) & m);
+}
+
+HELPER_BY_PARTS(subsb, 8, s, satsb(a - b))
+HELPER_BY_PARTS(subsw, 16, s, satsw(a - b))
+HELPER_BY_PARTS(subusb, 8, u, satub(a - b))
+HELPER_BY_PARTS(subusw, 16, u, satuw(a - b))

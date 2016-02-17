@@ -2751,12 +2751,12 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0xd5] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmullw */
     [0xd6] = { NULL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL },
     [0xd7] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmovmskb */
-    [0xd8] = MMX_OP2(psubusb),
-    [0xd9] = MMX_OP2(psubusw),
+    [0xd8] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubusb */
+    [0xd9] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubusw */
     [0xda] = MMX_OP2(pminub),
     [0xdb] = { SSE_SPECIAL, SSE_SPECIAL }, /* pand */
-    [0xdc] = MMX_OP2(paddusb),
-    [0xdd] = MMX_OP2(paddusw),
+    [0xdc] = { SSE_SPECIAL, SSE_SPECIAL }, /* paddusb */
+    [0xdd] = { SSE_SPECIAL, SSE_SPECIAL }, /* paddusw */
     [0xde] = MMX_OP2(pmaxub),
     [0xdf] = { SSE_SPECIAL, SSE_SPECIAL }, /* pandn */
     [0xe0] = { SSE_SPECIAL, SSE_SPECIAL }, /* pavgb */
@@ -2766,13 +2766,13 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0xe4] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmulhuw */
     [0xe5] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmulhw */
     [0xe6] = { NULL, gen_helper_cvttpd2dq, gen_helper_cvtdq2pd, gen_helper_cvtpd2dq },
-    [0xe7] = { SSE_SPECIAL , SSE_SPECIAL },  /* movntq, movntq */
-    [0xe8] = MMX_OP2(psubsb),
-    [0xe9] = MMX_OP2(psubsw),
+    [0xe7] = { SSE_SPECIAL, SSE_SPECIAL }, /* movntq, movntq */
+    [0xe8] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubsb */
+    [0xe9] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubsw */
     [0xea] = MMX_OP2(pminsw),
     [0xeb] = { SSE_SPECIAL, SSE_SPECIAL }, /* por */
-    [0xec] = MMX_OP2(paddsb),
-    [0xed] = MMX_OP2(paddsw),
+    [0xec] = { SSE_SPECIAL, SSE_SPECIAL }, /* paddsb */
+    [0xed] = { SSE_SPECIAL, SSE_SPECIAL }, /* paddsw */
     [0xee] = MMX_OP2(pmaxsw),
     [0xef] = { SSE_SPECIAL, SSE_SPECIAL }, /* pxor */
     [0xf0] = { NULL, NULL, NULL, SSE_SPECIAL }, /* lddqu */
@@ -2784,10 +2784,10 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0xf6] = MMX_OP2(psadbw),
     [0xf7] = { (SSEFunc_0_epp)gen_helper_maskmov_mmx,
                (SSEFunc_0_epp)gen_helper_maskmov_xmm }, /* XXX: casts */
-    [0xf8] = MMX_OP2(psubb),
-    [0xf9] = MMX_OP2(psubw),
-    [0xfa] = MMX_OP2(psubl),
-    [0xfb] = MMX_OP2(psubq),
+    [0xf8] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubb */
+    [0xf9] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubw */
+    [0xfa] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubd */
+    [0xfb] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubq */
     [0xfc] = { SSE_SPECIAL, SSE_SPECIAL }, /* paddb */
     [0xfd] = { SSE_SPECIAL, SSE_SPECIAL }, /* paddw */
     [0xfe] = { SSE_SPECIAL, SSE_SPECIAL }, /* paddd */
@@ -4684,6 +4684,20 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         do_xmm_binary(s, &data, gen_helper_vec_mullw);
         break;
 
+    case OP(d8,00): /* psubusb mm */
+        do_mmx_binary(s, &data, gen_helper_vec_subusb);
+        break;
+    case OP(d8,66): /* psubusb xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_subusb);
+        break;
+
+    case OP(d9,00): /* psubusw mm */
+        do_mmx_binary(s, &data, gen_helper_vec_subusw);
+        break;
+    case OP(d9,66): /* psubusw xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_subusw);
+        break;
+
     case OP(db,00): /* pand mm */
         do_mmx_binary(s, &data, tcg_gen_and_i64);
         break;
@@ -4691,6 +4705,20 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
     case OP(54,66): /* andpd xmm */
     case OP(db,66): /* pand xmm */
         do_xmm_binary(s, &data, tcg_gen_and_i64);
+        break;
+
+    case OP(dc,00): /* paddusb mm */
+        do_mmx_binary(s, &data, gen_helper_vec_addusb);
+        break;
+    case OP(dc,66): /* paddusb xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_addusb);
+        break;
+
+    case OP(dd,00): /* paddusw mm */
+        do_mmx_binary(s, &data, gen_helper_vec_addusw);
+        break;
+    case OP(dd,66): /* paddusw xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_addusw);
         break;
 
     case OP(df,00): /* pandn mm */
@@ -4744,6 +4772,20 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         do_xmm_binary(s, &data, gen_helper_vec_mulhw);
         break;
 
+    case OP(e8,00): /* psubsb mm */
+        do_mmx_binary(s, &data, gen_helper_vec_subsb);
+        break;
+    case OP(e8,66): /* psubsb xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_subsb);
+        break;
+
+    case OP(e9,00): /* psubsw mm */
+        do_mmx_binary(s, &data, gen_helper_vec_subsw);
+        break;
+    case OP(e9,66): /* psubsw xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_subsw);
+        break;
+
     case OP(eb,00): /* por mm */
         do_mmx_binary(s, &data, tcg_gen_or_i64);
         break;
@@ -4751,6 +4793,20 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
     case OP(56,66): /* orpd xmm */
     case OP(eb,66): /* por xmm */
         do_xmm_binary(s, &data, tcg_gen_or_i64);
+        break;
+
+    case OP(ec,00): /* paddsb mm */
+        do_mmx_binary(s, &data, gen_helper_vec_addsb);
+        break;
+    case OP(ec,66): /* paddsb xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_addsb);
+        break;
+
+    case OP(ed,00): /* paddsw mm */
+        do_mmx_binary(s, &data, gen_helper_vec_addsw);
+        break;
+    case OP(ed,66): /* paddsw xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_addsw);
         break;
 
     case OP(ef,00): /* pxor mm */
@@ -4781,6 +4837,34 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
     case OP(f3,66): /* psllq xmm */
         do_xmm_binary_scalar(s, &data, gen_helper_vec_sllq);
+        break;
+
+    case OP(f8,00): /* psubb mm */
+        do_mmx_binary(s, &data, gen_helper_vec_subb);
+        break;
+    case OP(f8,66): /* psubb xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_subb);
+        break;
+
+    case OP(f9,00): /* psubw mm */
+        do_mmx_binary(s, &data, gen_helper_vec_subw);
+        break;
+    case OP(f9,66): /* psubw xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_subw);
+        break;
+
+    case OP(fa,00): /* psubd mm */
+        do_mmx_binary(s, &data, gen_helper_vec_subd);
+        break;
+    case OP(fa,66): /* psubd xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_subd);
+        break;
+
+    case OP(fb,00): /* psubq mm */
+        do_mmx_binary(s, &data, tcg_gen_sub_i64);
+        break;
+    case OP(fb,66): /* psubq xmm */
+        do_xmm_binary(s, &data, tcg_gen_sub_i64);
         break;
 
     case OP(fc,00): /* paddb mm */
