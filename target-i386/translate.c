@@ -2668,8 +2668,8 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0x11] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* movups, movupd, movss, movsd */
     [0x12] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* movlps, movlpd, movsldup, movddup */
     [0x13] = { SSE_SPECIAL, SSE_SPECIAL },  /* movlps, movlpd */
-    [0x14] = { gen_helper_punpckldq_xmm, gen_helper_punpcklqdq_xmm },
-    [0x15] = { gen_helper_punpckhdq_xmm, gen_helper_punpckhqdq_xmm },
+    [0x14] = { SSE_SPECIAL, SSE_SPECIAL },  /* unpcklps, unpcklpd */
+    [0x15] = { SSE_SPECIAL, SSE_SPECIAL },  /* unpckhps, unpckhpd */
     [0x16] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL },  /* movhps, movhpd, movshdup */
     [0x17] = { SSE_SPECIAL, SSE_SPECIAL },  /* movhps, movhpd */
 
@@ -2708,20 +2708,20 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0x3a] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL },
 
     /* MMX ops and their SSE extensions */
-    [0x60] = MMX_OP2(punpcklbw),
-    [0x61] = MMX_OP2(punpcklwd),
-    [0x62] = MMX_OP2(punpckldq),
-    [0x63] = MMX_OP2(packsswb),
+    [0x60] = { SSE_SPECIAL, SSE_SPECIAL }, /* punpcklbw */
+    [0x61] = { SSE_SPECIAL, SSE_SPECIAL }, /* punpcklwd */
+    [0x62] = { SSE_SPECIAL, SSE_SPECIAL }, /* punpckldq */
+    [0x63] = { SSE_SPECIAL, SSE_SPECIAL }, /* packsswb */
     [0x64] = { SSE_SPECIAL, SSE_SPECIAL }, /* pcmpgtb */
     [0x65] = { SSE_SPECIAL, SSE_SPECIAL }, /* pcmpgtw */
     [0x66] = { SSE_SPECIAL, SSE_SPECIAL }, /* pcmpgtd */
-    [0x67] = MMX_OP2(packuswb),
-    [0x68] = MMX_OP2(punpckhbw),
-    [0x69] = MMX_OP2(punpckhwd),
-    [0x6a] = MMX_OP2(punpckhdq),
-    [0x6b] = MMX_OP2(packssdw),
-    [0x6c] = { NULL, gen_helper_punpcklqdq_xmm },
-    [0x6d] = { NULL, gen_helper_punpckhqdq_xmm },
+    [0x67] = { SSE_SPECIAL, SSE_SPECIAL }, /* packuswb */
+    [0x68] = { SSE_SPECIAL, SSE_SPECIAL }, /* punpckhbw */
+    [0x69] = { SSE_SPECIAL, SSE_SPECIAL }, /* punpckhwd */
+    [0x6a] = { SSE_SPECIAL, SSE_SPECIAL }, /* punpckhdq */
+    [0x6b] = { SSE_SPECIAL, SSE_SPECIAL }, /* packssdw */
+    [0x6c] = { NULL, SSE_SPECIAL }, /* punpcklqdq */
+    [0x6d] = { NULL, SSE_SPECIAL }, /* punpckhqdq */
     [0x6e] = { SSE_SPECIAL, SSE_SPECIAL }, /* movd mm, ea */
     [0x6f] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* movq, movdqa, , movqdu */
     [0x70] = { (SSEFunc_0_epp)gen_helper_pshufw_mmx,
@@ -3185,6 +3185,14 @@ static void do_xmm_binary(DisasContext *s, VecData *data, func_binary func)
     finish_xmm(s, data);
 }
 
+static void do_xmm_binary_row(DisasContext *s, VecData *data, func_binary func)
+{
+    prep_xmm_binary(s, data, VEC_ARG_N, VEC_ARG_N, VEC_ARG_N);
+    func(data->out.q[0], data->in1.q[0], data->in1.q[1]);
+    func(data->out.q[1], data->in2.q[0], data->in2.q[1]);
+    finish_xmm(s, data);
+}
+
 static void do_xmm_binary_scalar(DisasContext *s, VecData *data,
                                  func_binary func)
 {
@@ -3198,6 +3206,17 @@ static void do_xmm_binary_scalar(DisasContext *s, VecData *data,
 static void gen_andn_i64(TCGv_i64 r, TCGv_i64 a, TCGv_i64 b)
 {
     tcg_gen_andc_i64(r, b, a);
+}
+
+static void gen_vec_unpckldq(TCGv_i64 r, TCGv_i64 a, TCGv_i64 b)
+{
+    tcg_gen_deposit_i64(r, a, b, 32, 32);
+}
+
+static void gen_vec_unpckhdq(TCGv_i64 r, TCGv_i64 a, TCGv_i64 b)
+{
+    tcg_gen_shri_i64(r, a, 32);
+    tcg_gen_deposit_i64(r, b, r, 0, 32);
 }
 
 static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
@@ -4649,6 +4668,44 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
 #define OP(O,P)   (0x##O * 8 + PREFIX_##P)
 
     switch (b * 8 + b1) {
+    case OP(60,00): /* punpcklbw mm */
+        do_mmx_binary(s, &data, gen_helper_vec_unpcklbw);
+        break;
+    case OP(60,66): /* punpcklbw xmm */
+        prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_0, VEC_ARG_0);
+        gen_helper_vec_unpcklbw(data.out.q[0], data.in1.q[0], data.in2.q[0]);
+        gen_helper_vec_unpckhbw(data.out.q[1], data.in1.q[0], data.in2.q[0]);
+        finish_xmm(s, &data);
+        break;
+
+    case OP(61,00): /* punpcklwd mm */
+        do_mmx_binary(s, &data, gen_helper_vec_unpcklwd);
+        break;
+    case OP(61,66): /* punpcklwd xmm */
+        prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_0, VEC_ARG_0);
+        gen_helper_vec_unpcklwd(data.out.q[0], data.in1.q[0], data.in2.q[0]);
+        gen_helper_vec_unpckhwd(data.out.q[1], data.in1.q[0], data.in2.q[0]);
+        finish_xmm(s, &data);
+        break;
+
+    case OP(62,00): /* punpckldq mm */
+        do_mmx_binary(s, &data, gen_vec_unpckldq);
+        break;
+    case OP(14,00): /* unpcklps xmm */
+    case OP(62,66): /* punpckldq xmm */
+        prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_0, VEC_ARG_0);
+        gen_vec_unpckldq(data.out.q[0], data.in1.q[0], data.in2.q[0]);
+        gen_vec_unpckhdq(data.out.q[1], data.in1.q[0], data.in2.q[0]);
+        finish_xmm(s, &data);
+        break;
+
+    case OP(63,00): /* packsswb mm */
+        do_mmx_binary(s, &data, gen_helper_vec_packsswb);
+        break;
+    case OP(63,66): /* packsswb xmm */
+        do_xmm_binary_row(s, &data, gen_helper_vec_packsswb);
+        break;
+
     case OP(64,00): /* pcmpgtb mm */
         do_mmx_binary(s, &data, gen_helper_vec_cmpgtb);
         break;
@@ -4668,6 +4725,67 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
     case OP(66,66): /* pcmpgtd xmm */
         do_xmm_binary(s, &data, gen_helper_vec_cmpgtd);
+        break;
+
+    case OP(67,00): /* packuswb mm */
+        do_mmx_binary(s, &data, gen_helper_vec_packuswb);
+        break;
+    case OP(67,66): /* packuswb xmm */
+        do_xmm_binary_row(s, &data, gen_helper_vec_packuswb);
+        break;
+
+    case OP(68,00): /* punpckhbw mm */
+        do_mmx_binary(s, &data, gen_helper_vec_unpckhbw);
+        break;
+    case OP(68,66): /* punpckhbw xmm */
+        prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_1, VEC_ARG_1);
+        gen_helper_vec_unpcklbw(data.out.q[0], data.in1.q[1], data.in2.q[1]);
+        gen_helper_vec_unpckhbw(data.out.q[1], data.in1.q[1], data.in2.q[1]);
+        finish_xmm(s, &data);
+        break;
+
+    case OP(69,00): /* punpckhwd mm */
+        do_mmx_binary(s, &data, gen_helper_vec_unpckhwd);
+        break;
+    case OP(69,66): /* punpckhwd xmm */
+        prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_1, VEC_ARG_1);
+        gen_helper_vec_unpcklwd(data.out.q[0], data.in1.q[1], data.in2.q[1]);
+        gen_helper_vec_unpckhwd(data.out.q[1], data.in1.q[1], data.in2.q[1]);
+        finish_xmm(s, &data);
+        break;
+
+    case OP(6a,00): /* punpckhdq mm */
+        do_mmx_binary(s, &data, gen_vec_unpckhdq);
+        break;
+    case OP(15,00): /* unpckhps xmm */
+    case OP(6a,66): /* punpckhdq xmm */
+        prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_1, VEC_ARG_1);
+        gen_vec_unpckldq(data.out.q[0], data.in1.q[1], data.in2.q[1]);
+        gen_vec_unpckhdq(data.out.q[1], data.in1.q[1], data.in2.q[1]);
+        finish_xmm(s, &data);
+        break;
+
+    case OP(6b,00): /* packssdw mm */
+        do_mmx_binary(s, &data, gen_helper_vec_packssdw);
+        break;
+    case OP(6b,66): /* packssdw xmm */
+        do_xmm_binary_row(s, &data, gen_helper_vec_packssdw);
+        break;
+
+    case OP(14,66): /* unpcklpd xmm */
+    case OP(6c,66): /* punpcklqdq xmm */
+        prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_0, VEC_ARG_0);
+        tcg_gen_mov_i64(data.out.q[0], data.in1.q[0]);
+        tcg_gen_mov_i64(data.out.q[1], data.in2.q[0]);
+        finish_xmm(s, &data);
+        break;
+
+    case OP(15,66): /* unpckhpd xmm */
+    case OP(6d,66): /* punpckhqdq xmm */
+        prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_1, VEC_ARG_1);
+        tcg_gen_mov_i64(data.out.q[0], data.in1.q[1]);
+        tcg_gen_mov_i64(data.out.q[1], data.in2.q[1]);
+        finish_xmm(s, &data);
         break;
 
     case OP(74,00): /* pcmpeqb mm */

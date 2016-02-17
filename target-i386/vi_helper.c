@@ -132,6 +132,57 @@ HELPER_BY_PARTS(mulhw, 16, s, (a * b) >> 16)
 HELPER_BY_PARTS(mulhuw, 16, u, (a * b) >> 16)
 HELPER_BY_PARTS(mullw, 16, u, a * b)
 
+uint64_t helper_vec_packsswb(uint64_t va, uint64_t vb)
+{
+    uint64_t ret = 0;
+    int i;
+
+    for (i = 0; i < 32; i += 8) {
+        int a = sextract64(va, i * 2, 16);
+        ret = deposit64(ret, i, 8, satsb(a));
+    }
+    for (i = 0; i < 32; i += 8) {
+        int b = sextract64(vb, i * 2, 16);
+        ret = deposit64(ret, i + 32, 8, satsb(b));
+    }
+
+    return ret;
+}
+
+uint64_t helper_vec_packuswb(uint64_t va, uint64_t vb)
+{
+    uint64_t ret = 0;
+    int i;
+
+    for (i = 0; i < 32; i += 8) {
+        int a = extract64(va, i * 2, 16);
+        ret = deposit64(ret, i, 8, satub(a));
+    }
+    for (i = 0; i < 32; i += 8) {
+        int b = extract64(vb, i * 2, 16);
+        ret = deposit64(ret, i + 32, 8, satub(b));
+    }
+
+    return ret;
+}
+
+uint64_t helper_vec_packssdw(uint64_t va, uint64_t vb)
+{
+    uint64_t ret = 0;
+    int i;
+
+    for (i = 0; i < 32; i += 16) {
+        int a = sextract64(va, i * 2, 32);
+        ret = deposit64(ret, i, 16, satsw(a));
+    }
+    for (i = 0; i < 32; i += 16) {
+        int b = sextract64(vb, i * 2, 32);
+        ret = deposit64(ret, i + 32, 16, satsw(b));
+    }
+
+    return ret;
+}
+
 uint64_t helper_vec_sllw(uint64_t part, uint64_t shift)
 {
     uint64_t mask;
@@ -252,3 +303,53 @@ HELPER_BY_PARTS(subsb, 8, s, satsb(a - b))
 HELPER_BY_PARTS(subsw, 16, s, satsw(a - b))
 HELPER_BY_PARTS(subusb, 8, u, satub(a - b))
 HELPER_BY_PARTS(subusw, 16, u, satuw(a - b))
+
+uint64_t helper_vec_unpcklbw(uint64_t a, uint64_t b)
+{
+    unsigned a0 = extract64(a, 0, 8);
+    unsigned a1 = extract64(a, 8, 8);
+    unsigned a2 = extract64(a, 16, 8);
+    unsigned a3 = extract64(a, 24, 8);
+    unsigned b0 = extract64(b, 0, 8);
+    unsigned b1 = extract64(b, 8, 8);
+    unsigned b2 = extract64(b, 16, 8);
+    unsigned b3 = extract64(b, 24, 8);
+    uint64_t ret;
+
+    ret = a0;
+    ret |= (uint64_t)b0 << 8;
+    ret |= (uint64_t)a1 << 16;
+    ret |= (uint64_t)b1 << 24;
+    ret |= (uint64_t)a2 << 32;
+    ret |= (uint64_t)b2 << 40;
+    ret |= (uint64_t)a3 << 48;
+    ret |= (uint64_t)b3 << 56;
+
+    return ret;
+}
+
+uint64_t helper_vec_unpckhbw(uint64_t a, uint64_t b)
+{
+    return helper_vec_unpcklbw(a >> 32, b >> 32);
+}
+
+uint64_t helper_vec_unpcklwd(uint64_t a, uint64_t b)
+{
+    unsigned a0 = extract64(a, 0, 16);
+    unsigned a1 = extract64(a, 16, 16);
+    unsigned b0 = extract64(b, 0, 16);
+    unsigned b1 = extract64(b, 16, 16);
+    uint64_t ret;
+
+    ret = a0;
+    ret = (uint64_t)b0 << 16;
+    ret = (uint64_t)a1 << 32;
+    ret = (uint64_t)b1 << 48;
+
+    return ret;
+}
+
+uint64_t helper_vec_unpckhwd(uint64_t a, uint64_t b)
+{
+    return helper_vec_unpcklwd(a >> 32, b >> 32);
+}
