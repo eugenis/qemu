@@ -2712,9 +2712,9 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0x61] = MMX_OP2(punpcklwd),
     [0x62] = MMX_OP2(punpckldq),
     [0x63] = MMX_OP2(packsswb),
-    [0x64] = MMX_OP2(pcmpgtb),
-    [0x65] = MMX_OP2(pcmpgtw),
-    [0x66] = MMX_OP2(pcmpgtl),
+    [0x64] = { SSE_SPECIAL, SSE_SPECIAL }, /* pcmpgtb */
+    [0x65] = { SSE_SPECIAL, SSE_SPECIAL }, /* pcmpgtw */
+    [0x66] = { SSE_SPECIAL, SSE_SPECIAL }, /* pcmpgtd */
     [0x67] = MMX_OP2(packuswb),
     [0x68] = MMX_OP2(punpckhbw),
     [0x69] = MMX_OP2(punpckhwd),
@@ -2731,9 +2731,9 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0x71] = { SSE_SPECIAL, SSE_SPECIAL }, /* shiftw */
     [0x72] = { SSE_SPECIAL, SSE_SPECIAL }, /* shiftd */
     [0x73] = { SSE_SPECIAL, SSE_SPECIAL }, /* shiftq */
-    [0x74] = MMX_OP2(pcmpeqb),
-    [0x75] = MMX_OP2(pcmpeqw),
-    [0x76] = MMX_OP2(pcmpeql),
+    [0x74] = { SSE_SPECIAL, SSE_SPECIAL }, /* pcmpeqb */
+    [0x75] = { SSE_SPECIAL, SSE_SPECIAL }, /* pcmpeqw */
+    [0x76] = { SSE_SPECIAL, SSE_SPECIAL }, /* pcmpeqd */
     [0x77] = { SSE_DUMMY }, /* emms */
     [0x78] = { NULL, SSE_SPECIAL, NULL, SSE_SPECIAL }, /* extrq_i, insertq_i */
     [0x79] = { NULL, gen_helper_extrq_r, NULL, gen_helper_insertq_r },
@@ -4649,6 +4649,48 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
 #define OP(O,P)   (0x##O * 8 + PREFIX_##P)
 
     switch (b * 8 + b1) {
+    case OP(64,00): /* pcmpgtb mm */
+        do_mmx_binary(s, &data, gen_helper_vec_cmpgtb);
+        break;
+    case OP(64,66): /* pcmpgtb xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_cmpgtb);
+        break;
+
+    case OP(65,00): /* pcmpgtw mm */
+        do_mmx_binary(s, &data, gen_helper_vec_cmpgtw);
+        break;
+    case OP(65,66): /* pcmpgtw xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_cmpgtw);
+        break;
+
+    case OP(66,00): /* pcmpgtd mm */
+        do_mmx_binary(s, &data, gen_helper_vec_cmpgtd);
+        break;
+    case OP(66,66): /* pcmpgtd xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_cmpgtd);
+        break;
+
+    case OP(74,00): /* pcmpeqb mm */
+        do_mmx_binary(s, &data, gen_helper_vec_cmpeqb);
+        break;
+    case OP(74,66): /* pcmpeqb xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_cmpeqb);
+        break;
+
+    case OP(75,00): /* pcmpeqw mm */
+        do_mmx_binary(s, &data, gen_helper_vec_cmpeqw);
+        break;
+    case OP(75,66): /* pcmpeqw xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_cmpeqw);
+        break;
+
+    case OP(76,00): /* pcmpeqd mm */
+        do_mmx_binary(s, &data, gen_helper_vec_cmpeqd);
+        break;
+    case OP(76,66): /* pcmpeqd xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_cmpeqd);
+        break;
+
     case OP(d1,00): /* psrlw mm */
         do_mmx_binary(s, &data, gen_helper_vec_srlw);
         break;

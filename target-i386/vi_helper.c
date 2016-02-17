@@ -115,6 +115,14 @@ HELPER_BY_PARTS(addusw, 16, u, satuw(a + b))
 HELPER_BY_PARTS(avgb, 8, u, (a + b + 1) >> 1)
 HELPER_BY_PARTS(avgw, 16, u, (a + b + 1) >> 1)
 
+HELPER_BY_PARTS(cmpeqb, 8, u, -(a == b))
+HELPER_BY_PARTS(cmpeqw, 16, u, -(a == b))
+HELPER_BY_PARTS(cmpeqd, 32, u, -(a == b))
+
+HELPER_BY_PARTS(cmpgtb, 8, s, -(a > b))
+HELPER_BY_PARTS(cmpgtw, 16, s, -(a > b))
+HELPER_BY_PARTS(cmpgtd, 32, s, -(a > b))
+
 HELPER_BY_PARTS(mulhw, 16, s, (a * b) >> 16)
 HELPER_BY_PARTS(mulhuw, 16, u, (a * b) >> 16)
 HELPER_BY_PARTS(mullw, 16, u, a * b)
