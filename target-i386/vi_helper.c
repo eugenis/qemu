@@ -123,6 +123,25 @@ HELPER_BY_PARTS(cmpgtb, 8, s, -(a > b))
 HELPER_BY_PARTS(cmpgtw, 16, s, -(a > b))
 HELPER_BY_PARTS(cmpgtd, 32, s, -(a > b))
 
+uint64_t helper_vec_maddwd(uint64_t va, uint64_t vb)
+{
+    int a0 = sextract64(va, 0, 16);
+    int a1 = sextract64(va, 16, 16);
+    int a2 = sextract64(va, 32, 16);
+    int a3 = sextract64(va, 48, 16);
+    int b0 = sextract64(vb, 0, 16);
+    int b1 = sextract64(vb, 16, 16);
+    int b2 = sextract64(vb, 32, 16);
+    int b3 = sextract64(vb, 48, 16);
+
+    a0 *= b0;
+    a1 *= b1;
+    a2 *= b2;
+    a3 *= b3;
+
+    return deposit64(a0 + a1, 32, 32, a2 + a3);
+}
+
 HELPER_BY_PARTS(maxub, 8, u, a > b ? a : b)
 HELPER_BY_PARTS(minub, 8, u, a < b ? a : b)
 HELPER_BY_PARTS(maxsw, 16, s, a > b ? a : b)
@@ -181,6 +200,20 @@ uint64_t helper_vec_packssdw(uint64_t va, uint64_t vb)
     }
 
     return ret;
+}
+
+uint64_t helper_vec_sadbw(uint64_t va, uint64_t vb)
+{
+    int i, ret = 0;
+
+    for (i = 0; i < 64; i += 8) {
+        int a = sextract64(va, i, 8);
+        int b = sextract64(vb, i, 8);
+        int d = a - b;
+        ret += d < 0 ? -d : d;
+    }
+
+    return ret & 0xffff;
 }
 
 uint64_t helper_vec_sllw(uint64_t part, uint64_t shift)

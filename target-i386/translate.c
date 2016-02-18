@@ -2779,9 +2779,9 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0xf1] = { SSE_SPECIAL, SSE_SPECIAL }, /* psllw */
     [0xf2] = { SSE_SPECIAL, SSE_SPECIAL }, /* pslld */
     [0xf3] = { SSE_SPECIAL, SSE_SPECIAL }, /* psllq */
-    [0xf4] = MMX_OP2(pmuludq),
-    [0xf5] = MMX_OP2(pmaddwd),
-    [0xf6] = MMX_OP2(psadbw),
+    [0xf4] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmuludq */
+    [0xf5] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmaddwd */
+    [0xf6] = { SSE_SPECIAL, SSE_SPECIAL }, /* psadbw */
     [0xf7] = { (SSEFunc_0_epp)gen_helper_maskmov_mmx,
                (SSEFunc_0_epp)gen_helper_maskmov_xmm }, /* XXX: casts */
     [0xf8] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubb */
@@ -3206,6 +3206,15 @@ static void do_xmm_binary_scalar(DisasContext *s, VecData *data,
 static void gen_andn_i64(TCGv_i64 r, TCGv_i64 a, TCGv_i64 b)
 {
     tcg_gen_andc_i64(r, b, a);
+}
+
+static void gen_vec_muludq(TCGv_i64 r, TCGv_i64 a, TCGv_i64 b)
+{
+    TCGv_i64 t = tcg_temp_new_i64();
+    tcg_gen_ext32u_i64(t, b);
+    tcg_gen_ext32u_i64(r, a);
+    tcg_gen_mul_i64(r, r, t);
+    tcg_temp_free_i64(t);
 }
 
 static void gen_vec_unpckldq(TCGv_i64 r, TCGv_i64 a, TCGv_i64 b)
@@ -5025,6 +5034,27 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
     case OP(f3,66): /* psllq xmm */
         do_xmm_binary_scalar(s, &data, gen_helper_vec_sllq);
+        break;
+
+    case OP(f4,00): /* pmuludq mm */
+        do_mmx_binary(s, &data, gen_vec_muludq);
+        break;
+    case OP(f4,66): /* pmuludq xmm */
+        do_xmm_binary(s, &data, gen_vec_muludq);
+        break;
+
+    case OP(f5,00): /* pmaddwd mm */
+        do_mmx_binary(s, &data, gen_helper_vec_maddwd);
+        break;
+    case OP(f5,66): /* pmaddwd xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_maddwd);
+        break;
+
+    case OP(f6,00): /* psadbw mm */
+        do_mmx_binary(s, &data, gen_helper_vec_sadbw);
+        break;
+    case OP(f6,66): /* psadbw xmm */
+        do_xmm_binary(s, &data, gen_helper_vec_sadbw);
         break;
 
     case OP(f8,00): /* psubb mm */
