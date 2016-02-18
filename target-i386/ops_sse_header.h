@@ -63,16 +63,6 @@ DEF_HELPER_2(glue(movl_mm_T0, SUFFIX), void, Reg, i32)
 DEF_HELPER_2(glue(movq_mm_T0, SUFFIX), void, Reg, i64)
 #endif
 
-#if SHIFT == 0
-DEF_HELPER_3(glue(pshufw, SUFFIX), void, Reg, Reg, int)
-#else
-DEF_HELPER_3(shufps, void, Reg, Reg, int)
-DEF_HELPER_3(shufpd, void, Reg, Reg, int)
-DEF_HELPER_3(glue(pshufd, SUFFIX), void, Reg, Reg, int)
-DEF_HELPER_3(glue(pshuflw, SUFFIX), void, Reg, Reg, int)
-DEF_HELPER_3(glue(pshufhw, SUFFIX), void, Reg, Reg, int)
-#endif
-
 #if SHIFT == 1
 /* FPU ops */
 /* XXX: not accurate */

@@ -2700,8 +2700,7 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0x5f] = SSE_FOP(max),
 
     [0xc2] = SSE_FOP(cmpeq),
-    [0xc6] = { (SSEFunc_0_epp)gen_helper_shufps,
-               (SSEFunc_0_epp)gen_helper_shufpd }, /* XXX: casts */
+    [0xc6] = { SSE_SPECIAL, SSE_SPECIAL }, /* shufps, shufpd */
 
     /* SSSE3, SSE4, MOVBE, CRC32, BMI1, BMI2, ADX.  */
     [0x38] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL },
@@ -2724,10 +2723,8 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0x6d] = { NULL, SSE_SPECIAL }, /* punpckhqdq */
     [0x6e] = { SSE_SPECIAL, SSE_SPECIAL }, /* movd mm, ea */
     [0x6f] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* movq, movdqa, , movqdu */
-    [0x70] = { (SSEFunc_0_epp)gen_helper_pshufw_mmx,
-               (SSEFunc_0_epp)gen_helper_pshufd_xmm,
-               (SSEFunc_0_epp)gen_helper_pshufhw_xmm,
-               (SSEFunc_0_epp)gen_helper_pshuflw_xmm }, /* XXX: casts */
+    [0x70] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL },
+             /* pshufw, pshufd, pshufhw, pshuflw */
     [0x71] = { SSE_SPECIAL, SSE_SPECIAL }, /* shiftw */
     [0x72] = { SSE_SPECIAL, SSE_SPECIAL }, /* shiftd */
     [0x73] = { SSE_SPECIAL, SSE_SPECIAL }, /* shiftq */
@@ -3079,6 +3076,13 @@ static void ld_mmx_src2(DisasContext *s, VecData *data)
     }
 }
 
+static void prep_mmx_unary(DisasContext *s, VecData *data)
+{
+    ld_mmx_src2(s, data);
+    data->in1f = 0;
+    prep_output(data, VEC_ARG_0);
+}
+
 static void prep_mmx_binary(DisasContext *s, VecData *data)
 {
     ld_mmx_src2(s, data);
@@ -3162,6 +3166,13 @@ static void ld_xmm_src2(DisasContext *s, VecData *data, int flags)
     }
 }
 
+static void prep_xmm_unary(DisasContext *s, VecData *data, int outf, int in2f)
+{
+    ld_xmm_src2(s, data, in2f);
+    data->in1f = 0;
+    prep_output(data, outf);
+}
+
 static void prep_xmm_binary(DisasContext *s, VecData *data,
                             int outf, int in1f, int in2f)
 {
@@ -3228,13 +3239,77 @@ static void gen_vec_unpckhdq(TCGv_i64 r, TCGv_i64 a, TCGv_i64 b)
     tcg_gen_deposit_i64(r, b, r, 0, 32);
 }
 
+static void gen_shufd1(TCGv_i64 r, TCGv_i64 al, TCGv_i64 ah, int sel)
+{
+    /* Let AL=BA, AH=DC.  Consider the easiest way to move the
+       data around.  It will only ever require two tcg operations.  */
+    switch (sel & 15) {
+    case 0x4: /* 01 00 : BA */
+    case 0xe: /* 11 10 : DC */
+        /* Plain moves.  */
+        tcg_gen_mov_i64(r, sel & 2 ? ah : al);
+        break;
+
+    case 0xd: /* 11 01 : DB */
+    case 0x7: /* 01 11 : BD */
+        /* Two high parts from different inputs; rename lane 0.  */
+        if (sel & 2) {
+            tcg_gen_shri_i64(r, ah, 32);
+            ah = r;
+        } else {
+            tcg_gen_shri_i64(r, al, 32);
+            al = r;
+        }
+        sel &= 0xe;
+        /* fallthru */
+    case 0x6: /* 01 10 : BC */
+    case 0xc: /* 11 00 : DA */
+        /* High part in high part, low part in low part.  */
+        tcg_gen_deposit_i64(r, sel & 8 ? ah : al, sel & 2 ? ah : al, 0, 32);
+        break;
+
+    case 0x3: /* 00 11 : AD */
+    case 0x5: /* 01 01 : BB */
+    case 0x9: /* 10 01 : CB */
+    case 0xf: /* 11 11 : DD */
+        /* Two high parts from the same input, or one high part from one
+           input and one low part from the other.  Rename the high part.  */
+        if (sel & 2) {
+            tcg_gen_shri_i64(r, ah, 32);
+            ah = r;
+        } else {
+            tcg_gen_shri_i64(r, al, 32);
+            al = r;
+        }
+        sel &= 0xa;
+        /* fallthru */
+    case 0x0: /* 00 00 : AA */
+    case 0x2: /* 00 10 : AC */
+    case 0x8: /* 10 00 : CA */
+    case 0xa: /* 10 10 : CC */
+        /* Low parts in both high and low.  */
+        tcg_gen_deposit_i64(r, sel & 8 ? ah : al, sel & 2 ? ah : al, 32, 32);
+        break;
+
+    case 0x1: /* 00 01 : AB */
+    case 0xb: /* 10 11 : CD */
+        /* High part and low part from the same input, but in the wrong lanes.
+           Still just need one shift, but renaming would cause problems.  */
+        if (sel & 2) {
+            al = ah;
+        }
+        tcg_gen_shri_i64(r, al, 32);
+        tcg_gen_deposit_i64(r, r, al, 32, 32);
+        break;
+    }
+}
+
 static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
 {
     int b1, op1_offset, op2_offset, is_xmm, val;
-    int modrm, mod, rm, reg;
+    int modrm, mod, rm, reg, sel;
     SSEFunc_0_epp sse_fn_epp;
     SSEFunc_0_eppi sse_fn_eppi;
-    SSEFunc_0_ppi sse_fn_ppi;
     SSEFunc_0_eppt sse_fn_eppt;
     TCGMemOp ot;
 
@@ -4530,8 +4605,6 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
     } else {
         /* generic MMX or SSE operation */
         switch(b) {
-        case 0x70: /* pshufx insn */
-        case 0xc6: /* pshufx insn */
         case 0xc2: /* compare insns */
             s->rip_offset = 1;
             break;
@@ -4614,15 +4687,6 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
             tcg_gen_addi_ptr(cpu_ptr0, cpu_env, op1_offset);
             tcg_gen_addi_ptr(cpu_ptr1, cpu_env, op2_offset);
             sse_fn_epp(cpu_env, cpu_ptr0, cpu_ptr1);
-            break;
-        case 0x70: /* pshufx insn */
-        case 0xc6: /* pshufx insn */
-            val = insn_get_ub(s);
-            tcg_gen_addi_ptr(cpu_ptr0, cpu_env, op1_offset);
-            tcg_gen_addi_ptr(cpu_ptr1, cpu_env, op2_offset);
-            /* XXX: introduce a new table? */
-            sse_fn_ppi = (SSEFunc_0_ppi)sse_fn_epp;
-            sse_fn_ppi(cpu_ptr0, cpu_ptr1, tcg_const_i32(val));
             break;
         case 0xc2:
             /* compare insns */
@@ -4797,6 +4861,38 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         finish_xmm(s, &data);
         break;
 
+    case OP(70,00): /* pshufw mm */
+        s->rip_offset = 1;
+        prep_mmx_unary(s, &data);
+        tcg_gen_movi_i32(cpu_tmp2_i32, insn_get_ub(s));
+        gen_helper_vec_shufw(data.out.q[0], data.in2.q[0], cpu_tmp2_i32);
+        finish_mmx(s, &data);
+        break;
+    case OP(70,66): /* pshufd xmm */
+        s->rip_offset = 1;
+        prep_xmm_unary(s, &data, VEC_ARG_N, VEC_ARG_N);
+        sel = insn_get_ub(s);
+        gen_shufd1(data.out.q[0], data.in2.q[0], data.in2.q[1], sel);
+        gen_shufd1(data.out.q[1], data.in2.q[0], data.in2.q[1], sel >> 4);
+        finish_xmm(s, &data);
+        break;
+    case OP(70,F2): /* pshuflw xmm */
+        s->rip_offset = 1;
+        prep_xmm_unary(s, &data, VEC_ARG_N, VEC_ARG_N);
+        tcg_gen_movi_i32(cpu_tmp2_i32, insn_get_ub(s));
+        gen_helper_vec_shufw(data.out.q[0], data.in2.q[0], cpu_tmp2_i32);
+        tcg_gen_mov_i64(data.out.q[1], data.in2.q[1]);
+        finish_xmm(s, &data);
+        break;
+    case OP(70,F3): /* pshufhw xmm */
+        s->rip_offset = 1;
+        prep_xmm_unary(s, &data, VEC_ARG_N, VEC_ARG_N);
+        tcg_gen_movi_i32(cpu_tmp2_i32, insn_get_ub(s));
+        tcg_gen_mov_i64(data.out.q[0], data.in2.q[0]);
+        gen_helper_vec_shufw(data.out.q[1], data.in2.q[1], cpu_tmp2_i32);
+        finish_xmm(s, &data);
+        break;
+
     case OP(74,00): /* pcmpeqb mm */
         do_mmx_binary(s, &data, gen_helper_vec_cmpeqb);
         break;
@@ -4816,6 +4912,23 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
     case OP(76,66): /* pcmpeqd xmm */
         do_xmm_binary(s, &data, gen_helper_vec_cmpeqd);
+        break;
+
+    case OP(c6,00): /* shufps xmm */
+        s->rip_offset = 1;
+        prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_N, VEC_ARG_N);
+        sel = insn_get_ub(s);
+        gen_shufd1(data.out.q[0], data.in1.q[0], data.in1.q[1], sel);
+        gen_shufd1(data.out.q[1], data.in2.q[0], data.in2.q[1], sel >> 4);
+        finish_xmm(s, &data);
+        break;
+    case OP(c6,66): /* shufpd xmm */
+        s->rip_offset = 1;
+        prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_N, VEC_ARG_N);
+        sel = insn_get_ub(s);
+        tcg_gen_mov_i64(data.out.q[0], data.in1.q[sel & 1]);
+        tcg_gen_mov_i64(data.out.q[1], data.in2.q[(sel >> 1) & 1]);
+        finish_xmm(s, &data);
         break;
 
     case OP(d1,00): /* psrlw mm */

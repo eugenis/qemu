@@ -216,6 +216,21 @@ uint64_t helper_vec_sadbw(uint64_t va, uint64_t vb)
     return ret & 0xffff;
 }
 
+uint64_t helper_vec_shufw(uint64_t va, uint32_t sel)
+{
+    uint16_t r0 = va >> ((sel & 3) * 16);
+    uint16_t r1 = va >> (((sel >> 2) & 3) * 16);
+    uint16_t r2 = va >> (((sel >> 4) & 3) * 16);
+    uint16_t r3 = va >> (((sel >> 6) & 3) * 16);
+    uint64_t ret;
+
+    ret = r0;
+    ret |= (uint64_t)r1 << 16;
+    ret |= (uint64_t)r2 << 32;
+    ret |= (uint64_t)r3 << 48;
+    return ret;
+}
+
 uint64_t helper_vec_sllw(uint64_t part, uint64_t shift)
 {
     uint64_t mask;
