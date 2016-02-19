@@ -261,55 +261,6 @@ void glue(helper_movq_mm_T0, SUFFIX)(Reg *d, uint64_t val)
 /* FPU ops */
 /* XXX: not accurate */
 
-#define SSE_HELPER_S(name, F)                                           \
-    void helper_ ## name ## ps(CPUX86State *env, Reg *d, Reg *s)        \
-    {                                                                   \
-        d->ZMM_S(0) = F(32, d->ZMM_S(0), s->ZMM_S(0));                  \
-        d->ZMM_S(1) = F(32, d->ZMM_S(1), s->ZMM_S(1));                  \
-        d->ZMM_S(2) = F(32, d->ZMM_S(2), s->ZMM_S(2));                  \
-        d->ZMM_S(3) = F(32, d->ZMM_S(3), s->ZMM_S(3));                  \
-    }                                                                   \
-                                                                        \
-    void helper_ ## name ## ss(CPUX86State *env, Reg *d, Reg *s)        \
-    {                                                                   \
-        d->ZMM_S(0) = F(32, d->ZMM_S(0), s->ZMM_S(0));                  \
-    }                                                                   \
-                                                                        \
-    void helper_ ## name ## pd(CPUX86State *env, Reg *d, Reg *s)        \
-    {                                                                   \
-        d->ZMM_D(0) = F(64, d->ZMM_D(0), s->ZMM_D(0));                  \
-        d->ZMM_D(1) = F(64, d->ZMM_D(1), s->ZMM_D(1));                  \
-    }                                                                   \
-                                                                        \
-    void helper_ ## name ## sd(CPUX86State *env, Reg *d, Reg *s)        \
-    {                                                                   \
-        d->ZMM_D(0) = F(64, d->ZMM_D(0), s->ZMM_D(0));                  \
-    }
-
-#define FPU_ADD(size, a, b) float ## size ## _add(a, b, &env->sse_status)
-#define FPU_SUB(size, a, b) float ## size ## _sub(a, b, &env->sse_status)
-#define FPU_MUL(size, a, b) float ## size ## _mul(a, b, &env->sse_status)
-#define FPU_DIV(size, a, b) float ## size ## _div(a, b, &env->sse_status)
-#define FPU_SQRT(size, a, b) float ## size ## _sqrt(b, &env->sse_status)
-
-/* Note that the choice of comparison op here is important to get the
- * special cases right: for min and max Intel specifies that (-0,0),
- * (NaN, anything) and (anything, NaN) return the second argument.
- */
-#define FPU_MIN(size, a, b)                                     \
-    (float ## size ## _lt(a, b, &env->sse_status) ? (a) : (b))
-#define FPU_MAX(size, a, b)                                     \
-    (float ## size ## _lt(b, a, &env->sse_status) ? (a) : (b))
-
-SSE_HELPER_S(add, FPU_ADD)
-SSE_HELPER_S(sub, FPU_SUB)
-SSE_HELPER_S(mul, FPU_MUL)
-SSE_HELPER_S(div, FPU_DIV)
-SSE_HELPER_S(min, FPU_MIN)
-SSE_HELPER_S(max, FPU_MAX)
-SSE_HELPER_S(sqrt, FPU_SQRT)
-
-
 /* float to float conversions */
 void helper_cvtps2pd(CPUX86State *env, Reg *d, Reg *s)
 {
