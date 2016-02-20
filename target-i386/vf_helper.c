@@ -88,3 +88,29 @@ static inline uint64_t float64_ssemax(uint64_t a, uint64_t b, float_status *s)
 
 HELPERS_2(min, ssemin)
 HELPERS_2(max, ssemax)
+
+static const uint8_t comis_eflags[4] = {CC_C, CC_Z, 0, CC_Z | CC_P | CC_C};
+
+target_ulong helper_ss_comi(CPUX86State *env, uint32_t a, uint32_t b)
+{
+    intptr_t ret = float32_compare(a, b, &env->sse_status);
+    return comis_eflags[ret + 1];
+}
+
+target_ulong helper_d_comi(CPUX86State *env, uint64_t a, uint64_t b)
+{
+    intptr_t ret = float64_compare(a, b, &env->sse_status);
+    return comis_eflags[ret + 1];
+}
+
+target_ulong helper_ss_ucomi(CPUX86State *env, uint32_t a, uint32_t b)
+{
+    intptr_t ret = float32_compare_quiet(a, b, &env->sse_status);
+    return comis_eflags[ret + 1];
+}
+
+target_ulong helper_d_ucomi(CPUX86State *env, uint64_t a, uint64_t b)
+{
+    intptr_t ret = float64_compare_quiet(a, b, &env->sse_status);
+    return comis_eflags[ret + 1];
+}

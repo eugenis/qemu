@@ -2679,8 +2679,8 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0x2b] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* movntps, movntpd, movntss, movntsd */
     [0x2c] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* cvttps2pi, cvttpd2pi, cvttsd2si, cvttss2si */
     [0x2d] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* cvtps2pi, cvtpd2pi, cvtsd2si, cvtss2si */
-    [0x2e] = { gen_helper_ucomiss, gen_helper_ucomisd },
-    [0x2f] = { gen_helper_comiss, gen_helper_comisd },
+    [0x2e] = { SSE_SPECIAL, SSE_SPECIAL }, /* ucomiss, ucomisd */
+    [0x2f] = { SSE_SPECIAL, SSE_SPECIAL }, /* comiss, comisd */
     [0x50] = { SSE_SPECIAL, SSE_SPECIAL }, /* movmskps, movmskpd */
     [0x51] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(sqrt) */
     [0x52] = { gen_helper_rsqrtps, NULL, gen_helper_rsqrtss, NULL },
@@ -3313,6 +3313,26 @@ static void do_xmm_binary_sd(DisasContext *s, VecData *data,
     prep_xmm_binary(s, data, VEC_ARG_0, VEC_ARG_0, VEC_ARG_0);
     func(data->out.q[0], cpu_env, data->in1.q[0], data->in2.q[0]);
     finish_xmm(s, data);
+}
+
+static void do_xmm_comi_ss(DisasContext *s, VecData *data, func_comi_ss func)
+{
+    ld_xmm_src2_s(s, data);
+    ld_xmm_src1_s(s, data);
+    data->outf = 0;
+    func(cpu_cc_src, cpu_env, data->in1.s, data->in2.s);
+    free_vecdata(data);
+    set_cc_op(s, CC_OP_EFLAGS);
+}
+
+static void do_xmm_comi_sd(DisasContext *s, VecData *data, func_comi_sd func)
+{
+    ld_xmm_src2(s, data, VEC_ARG_0);
+    ld_xmm_src1(s, data, VEC_ARG_0);
+    data->outf = 0;
+    func(cpu_cc_src, cpu_env, data->in1.q[0], data->in2.q[0]);
+    free_vecdata(data);
+    set_cc_op(s, CC_OP_EFLAGS);
 }
 
 /* The sse andn instructions invert the first argument, not the second.  */
@@ -4732,15 +4752,6 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
                         sz = 3;
                     }
                     break;
-
-                case 0x2e:  /* ucomis[sd] */
-                case 0x2f:  /* comis[sd] */
-                    if (b1 == 0) {
-                        sz = 2;
-                    } else {
-                        sz = 3;
-                    }
-                    break;
                 }
 
                 switch (sz) {
@@ -4843,6 +4854,20 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
 #define OP(O,P)   (0x##O * 8 + PREFIX_##P)
 
     switch (b * 8 + b1) {
+    case OP(2e,00): /* ucomiss */
+        do_xmm_comi_ss(s, &data, gen_helper_ss_ucomi);
+        break;
+    case OP(2e,66): /* ucomisd */
+        do_xmm_comi_sd(s, &data, gen_helper_d_ucomi);
+        break;
+
+    case OP(2f,00): /* comiss */
+        do_xmm_comi_ss(s, &data, gen_helper_ss_comi);
+        break;
+    case OP(2f,66): /* comisd */
+        do_xmm_comi_sd(s, &data, gen_helper_d_comi);
+        break;
+
     case OP(51,00): /* sqrtps */
         do_xmm_unary_env(s, &data, gen_helper_ps_sqrt);
         break;
