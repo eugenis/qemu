@@ -62,6 +62,27 @@ HELPERS_2(mul, mul)
 HELPERS_2(div, div)
 HELPERS_1(sqrt, sqrt)
 
+uint64_t helper_ps_addsub(CPUX86State *env, uint64_t a, uint64_t b)
+{
+    uint32_t r0 = float32_sub(a, b, &env->sse_status);
+    uint32_t r1 = float32_add(a >> 32, b >> 32, &env->sse_status);
+    return ((uint64_t)r1 << 32) | r0;
+}
+
+uint64_t helper_ps_hadd(CPUX86State *env, uint64_t a0, uint64_t a1)
+{
+    uint32_t r0 = float32_add(a0, a0 >> 32, &env->sse_status);
+    uint32_t r1 = float32_add(a1, a1 >> 32, &env->sse_status);
+    return ((uint64_t)r1 << 32) | r0;
+}
+
+uint64_t helper_ps_hsub(CPUX86State *env, uint64_t a0, uint64_t a1)
+{
+    uint32_t r0 = float32_sub(a0, a0 >> 32, &env->sse_status);
+    uint32_t r1 = float32_sub(a1, a1 >> 32, &env->sse_status);
+    return ((uint64_t)r1 << 32) | r0;
+}
+
 uint32_t helper_ss_rcp(CPUX86State *env, uint32_t a)
 {
     return float32_div(float32_one, a, &env->sse_status);

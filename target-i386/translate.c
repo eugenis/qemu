@@ -2735,13 +2735,13 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0x77] = { SSE_DUMMY }, /* emms */
     [0x78] = { NULL, SSE_SPECIAL, NULL, SSE_SPECIAL }, /* extrq_i, insertq_i */
     [0x79] = { NULL, gen_helper_extrq_r, NULL, gen_helper_insertq_r },
-    [0x7c] = { NULL, gen_helper_haddpd, NULL, gen_helper_haddps },
-    [0x7d] = { NULL, gen_helper_hsubpd, NULL, gen_helper_hsubps },
+    [0x7c] = { NULL, SSE_SPECIAL, NULL, SSE_SPECIAL }, /* haddpd, haddps */
+    [0x7d] = { NULL, SSE_SPECIAL, NULL, SSE_SPECIAL }, /* hsubpd, hsubps */
     [0x7e] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* movd, movd, , movq */
     [0x7f] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* movq, movdqa, movdqu */
     [0xc4] = { SSE_SPECIAL, SSE_SPECIAL }, /* pinsrw */
     [0xc5] = { SSE_SPECIAL, SSE_SPECIAL }, /* pextrw */
-    [0xd0] = { NULL, gen_helper_addsubpd, NULL, gen_helper_addsubps },
+    [0xd0] = { NULL, SSE_SPECIAL, NULL, SSE_SPECIAL }, /* addsubpd, addsubps */
     [0xd1] = { SSE_SPECIAL, SSE_SPECIAL }, /* psrlw */
     [0xd2] = { SSE_SPECIAL, SSE_SPECIAL }, /* psrld */
     [0xd3] = { SSE_SPECIAL, SSE_SPECIAL }, /* psrlq */
@@ -3297,6 +3297,15 @@ static void do_xmm_binary_env(DisasContext *s, VecData *data,
     prep_xmm_binary(s, data, VEC_ARG_N, VEC_ARG_N, VEC_ARG_N);
     func(data->out.q[0], cpu_env, data->in1.q[0], data->in2.q[0]);
     func(data->out.q[1], cpu_env, data->in1.q[1], data->in2.q[1]);
+    finish_xmm(s, data);
+}
+
+static void do_xmm_binary_row_env(DisasContext *s, VecData *data,
+                                  func_binary_env func)
+{
+    prep_xmm_binary(s, data, VEC_ARG_N, VEC_ARG_N, VEC_ARG_N);
+    func(data->out.q[0], cpu_env, data->in1.q[0], data->in1.q[1]);
+    func(data->out.q[1], cpu_env, data->in2.q[0], data->in2.q[1]);
     finish_xmm(s, data);
 }
 
@@ -5183,6 +5192,20 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         do_xmm_binary(s, &data, gen_helper_vec_cmpeqd);
         break;
 
+    case OP(7c,66): /* haddpd */
+        do_xmm_binary_row_env(s, &data, gen_helper_d_add);
+        break;
+    case OP(7c,F2): /* haddps */
+        do_xmm_binary_row_env(s, &data, gen_helper_ps_hadd);
+        break;
+
+    case OP(7d,66): /* hsubpd */
+        do_xmm_binary_row_env(s, &data, gen_helper_d_sub);
+        break;
+    case OP(7d,F2): /* hsubps */
+        do_xmm_binary_row_env(s, &data, gen_helper_ps_hsub);
+        break;
+
     case OP(c6,00): /* shufps xmm */
         s->rip_offset = 1;
         prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_N, VEC_ARG_N);
@@ -5198,6 +5221,16 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         tcg_gen_mov_i64(data.out.q[0], data.in1.q[sel & 1]);
         tcg_gen_mov_i64(data.out.q[1], data.in2.q[(sel >> 1) & 1]);
         finish_xmm(s, &data);
+        break;
+
+    case OP(d0,66): /* addsubpd */
+        prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_N, VEC_ARG_N);
+        gen_helper_d_sub(data.out.q[0], cpu_env, data.in1.q[0], data.in2.q[0]);
+        gen_helper_d_add(data.out.q[1], cpu_env, data.in1.q[1], data.in2.q[1]);
+        finish_xmm(s, &data);
+        break;
+    case OP(d0,F2): /* addsubps */
+        do_xmm_binary_env(s, &data, gen_helper_ps_addsub);
         break;
 
     case OP(d1,00): /* psrlw mm */
