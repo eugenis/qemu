@@ -124,3 +124,24 @@ uint64_t helper_cvts2d(CPUX86State *env, uint32_t a)
 {
     return float32_to_float64(a, &env->sse_status);
 }
+
+uint64_t helper_cvtdq2ps(CPUX86State *env, uint64_t va)
+{
+    uint32_t r0 = int32_to_float32(va, &env->sse_status);
+    uint32_t r1 = int32_to_float32(va >> 32, &env->sse_status);
+    return ((uint64_t)r1 << 32) | r0;
+}
+
+uint64_t helper_cvtps2dq(CPUX86State *env, uint64_t va)
+{
+    uint32_t r0 = float32_to_int32(va, &env->sse_status);
+    uint32_t r1 = float32_to_int32(va >> 32, &env->sse_status);
+    return ((uint64_t)r1 << 32) | r0;
+}
+
+uint64_t helper_cvttps2dq(CPUX86State *env, uint64_t va)
+{
+    uint32_t r0 = float32_to_int32_round_to_zero(va, &env->sse_status);
+    uint32_t r1 = float32_to_int32_round_to_zero(va >> 32, &env->sse_status);
+    return ((uint64_t)r1 << 32) | r0;
+}

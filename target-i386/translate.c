@@ -2693,7 +2693,8 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0x59] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(mul) */
     [0x5a] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL },
              /* cvtps2pd, cvtpd2ps, cvtss2sd, cvtsd2ss */
-    [0x5b] = { gen_helper_cvtdq2ps, gen_helper_cvtps2dq, gen_helper_cvttps2dq },
+    [0x5b] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL },
+             /* cvtdq2ps, cvtps2dq, cvttps2dq */
     [0x5c] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(sub) */
     [0x5d] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(min) */
     [0x5e] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(div) */
@@ -4931,6 +4932,16 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         prep_xmm_unary_s(s, &data, VEC_ARG_0);
         gen_helper_cvts2d(data.out.q[0], cpu_env, data.in2.s);
         finish_xmm(s, &data);
+        break;
+
+    case OP(5b,00): /* cvtdq2ps */
+        do_xmm_unary_env(s, &data, gen_helper_cvtdq2ps);
+        break;
+    case OP(5b,66): /* cvtps2dq */
+        do_xmm_unary_env(s, &data, gen_helper_cvtps2dq);
+        break;
+    case OP(5b,F3): /* cvttps2dq */
+        do_xmm_unary_env(s, &data, gen_helper_cvttps2dq);
         break;
 
     case OP(5c,00): /* subps */
