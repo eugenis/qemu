@@ -62,6 +62,30 @@ HELPERS_2(mul, mul)
 HELPERS_2(div, div)
 HELPERS_1(sqrt, sqrt)
 
+uint32_t helper_ss_rcp(CPUX86State *env, uint32_t a)
+{
+    return float32_div(float32_one, a, &env->sse_status);
+}
+
+uint64_t helper_ps_rcp(CPUX86State *env, uint64_t a)
+{
+    uint32_t r0 = helper_ss_rcp(env, a);
+    uint32_t r1 = helper_ss_rcp(env, a >> 32);
+    return ((uint64_t)r1 << 32) | r0;
+}
+
+uint32_t helper_ss_rsqrt(CPUX86State *env, uint32_t a)
+{
+    return helper_ss_rcp(env, float32_sqrt(a, &env->sse_status));
+}
+
+uint64_t helper_ps_rsqrt(CPUX86State *env, uint64_t a)
+{
+    uint32_t r0 = helper_ss_rsqrt(env, a);
+    uint32_t r1 = helper_ss_rsqrt(env, a >> 32);
+    return ((uint64_t)r1 << 32) | r0;
+}
+
 /* Note that the choice of comparison op here is important to get the
  * special cases right: for min and max Intel specifies that (-0,0),
  * (NaN, anything) and (anything, NaN) return the second argument.

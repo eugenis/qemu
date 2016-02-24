@@ -2683,8 +2683,8 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0x2f] = { SSE_SPECIAL, SSE_SPECIAL }, /* comiss, comisd */
     [0x50] = { SSE_SPECIAL, SSE_SPECIAL }, /* movmskps, movmskpd */
     [0x51] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(sqrt) */
-    [0x52] = { gen_helper_rsqrtps, NULL, gen_helper_rsqrtss, NULL },
-    [0x53] = { gen_helper_rcpps, NULL, gen_helper_rcpss, NULL },
+    [0x52] = { SSE_SPECIAL, NULL, SSE_SPECIAL }, /* rsqrtps, rsqrtss */
+    [0x53] = { SSE_SPECIAL, NULL, SSE_SPECIAL }, /* rcpps, rcpss */
     [0x54] = { SSE_SPECIAL, SSE_SPECIAL }, /* andps, andpd */
     [0x55] = { SSE_SPECIAL, SSE_SPECIAL }, /* andnps, andnpd */
     [0x56] = { SSE_SPECIAL, SSE_SPECIAL }, /* orps, orpd */
@@ -4880,6 +4880,20 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
     case OP(51,F3): /* sqrtss */
         do_xmm_unary_ss(s, &data, gen_helper_ss_sqrt);
+        break;
+
+    case OP(52,00): /* rsqrtps */
+        do_xmm_unary_env(s, &data, gen_helper_ps_rsqrt);
+        break;
+    case OP(52,F3): /* rsqrtss */
+        do_xmm_unary_ss(s, &data, gen_helper_ss_rsqrt);
+        break;
+
+    case OP(53,00): /* rcpps */
+        do_xmm_unary_env(s, &data, gen_helper_ps_rcp);
+        break;
+    case OP(53,F3): /* rcpss */
+        do_xmm_unary_ss(s, &data, gen_helper_ss_rcp);
         break;
 
     case OP(58,00): /* addps */
