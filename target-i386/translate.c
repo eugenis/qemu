@@ -2734,7 +2734,7 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0x76] = { SSE_SPECIAL, SSE_SPECIAL }, /* pcmpeqd */
     [0x77] = { SSE_DUMMY }, /* emms */
     [0x78] = { NULL, SSE_SPECIAL, NULL, SSE_SPECIAL }, /* extrq_i, insertq_i */
-    [0x79] = { NULL, gen_helper_extrq_r, NULL, gen_helper_insertq_r },
+    [0x79] = { NULL, SSE_SPECIAL, NULL, SSE_SPECIAL }, /* extrq_r, insertq_r */
     [0x7c] = { NULL, SSE_SPECIAL, NULL, SSE_SPECIAL }, /* haddpd, haddps */
     [0x7d] = { NULL, SSE_SPECIAL, NULL, SSE_SPECIAL }, /* hsubpd, hsubps */
     [0x7e] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* movd, movd, , movq */
@@ -3704,27 +3704,6 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
                         offsetof(CPUX86State,xmm_regs[reg].ZMM_L(1)));
             gen_op_movl(offsetof(CPUX86State,xmm_regs[reg].ZMM_L(2)),
                         offsetof(CPUX86State,xmm_regs[reg].ZMM_L(3)));
-            break;
-        case 0x178:
-        case 0x378:
-            {
-                int bit_index, field_length;
-
-                if (b1 == 1 && reg != 0)
-                    goto illegal_op;
-                field_length = insn_get_ub(s) & 0x3F;
-                bit_index = insn_get_ub(s) & 0x3F;
-                tcg_gen_addi_ptr(cpu_ptr0, cpu_env,
-                    offsetof(CPUX86State,xmm_regs[reg]));
-                if (b1 == 1)
-                    gen_helper_extrq_i(cpu_env, cpu_ptr0,
-                                       tcg_const_i32(bit_index),
-                                       tcg_const_i32(field_length));
-                else
-                    gen_helper_insertq_i(cpu_env, cpu_ptr0,
-                                         tcg_const_i32(bit_index),
-                                         tcg_const_i32(field_length));
-            }
             break;
         case 0x7e: /* movd ea, mm */
 #ifdef TARGET_X86_64
@@ -5190,6 +5169,61 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
     case OP(76,66): /* pcmpeqd xmm */
         do_xmm_binary(s, &data, gen_helper_vec_cmpeqd);
+        break;
+
+    case OP(78,66): /* extrq imm (amd sse4a) */
+        {
+            int len, pos;
+
+            data.in2f = 0;
+            ld_xmm_src1(s, &data, VEC_ARG_0);
+            prep_output(&data, VEC_ARG_0);
+
+            len = extract32(insn_get_ub(s), 0, 6);
+            pos = extract32(insn_get_ub(s), 0, 6);
+            if (len == 0) {
+                len = 64;
+            }
+            tcg_gen_shri_i64(data.out.q[0], data.in1.q[0], pos);
+            tcg_gen_andi_i64(data.out.q[0], data.out.q[0],
+                             extract64(-1, 0, len));
+            finish_xmm(s, &data);
+        }
+        break;
+    case OP(78,F2): /* insertq imm (amd sse4a) */
+        {
+            int len, pos;
+
+            /* ??? No m128 allowed.  */
+            prep_xmm_binary(s, &data, VEC_ARG_0, VEC_ARG_0, VEC_ARG_0);
+
+            len = extract32(insn_get_ub(s), 0, 6);
+            pos = extract32(insn_get_ub(s), 0, 6);
+            if (len == 0) {
+                len = 64;
+            }
+            if (pos + len > 64) {
+                /* This case is undefined, but avoid an assert.  */
+                len = 64 - pos;
+            }
+            tcg_gen_deposit_i64(data.out.q[0], data.in1.q[0],
+                                data.in2.q[0], pos, len);
+            finish_xmm(s, &data);
+        }
+        break;
+
+    case OP(79,66): /* extrq xmm (amd sse4a) */
+        /* ??? No m128 allowed.  */
+        prep_xmm_binary(s, &data, VEC_ARG_0, VEC_ARG_0, VEC_ARG_0);
+        gen_helper_extrq_r(data.out.q[0], data.in1.q[0], data.in2.q[0]);
+        finish_xmm(s, &data);
+        break;
+    case OP(79,F2): /* insertq xmm (amd sse4a) */
+        /* ??? No m128 allowed.  */
+        prep_xmm_binary(s, &data, VEC_ARG_0, VEC_ARG_0, VEC_ARG_N);
+        gen_helper_insertq_r(data.out.q[0], data.in1.q[0],
+                             data.in2.q[0], data.in2.q[1]);
+        finish_xmm(s, &data);
         break;
 
     case OP(7c,66): /* haddpd */

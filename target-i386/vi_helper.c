@@ -401,3 +401,33 @@ uint64_t helper_vec_unpckhwd(uint64_t a, uint64_t b)
 {
     return helper_vec_unpcklwd(a >> 32, b >> 32);
 }
+
+uint64_t helper_extrq_r(uint64_t in1, uint64_t poslen)
+{
+    int len = extract32(poslen, 0, 6);
+    int pos = extract32(poslen, 8, 6);
+
+    if (len == 0) {
+        len = 64;
+    }
+    if (pos + len > 64) {
+        /* This case is undefined, but avoid an assert.  */
+        len = 64 - pos;
+    }
+    return extract64(in1, pos, len);
+}
+
+uint64_t helper_insertq_r(uint64_t in1, uint64_t in2, uint64_t poslen)
+{
+    int len = extract32(poslen, 0, 6);
+    int pos = extract32(poslen, 8, 6);
+
+    if (len == 0) {
+        len = 64;
+    }
+    if (pos + len > 64) {
+        /* This case is undefined, but avoid an assert.  */
+        len = 64 - pos;
+    }
+    return deposit64(in1, pos, len, in2);
+}

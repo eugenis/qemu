@@ -387,50 +387,6 @@ int64_t helper_cvttsd2sq(CPUX86State *env, ZMMReg *s)
 }
 #endif
 
-static inline uint64_t helper_extrq(uint64_t src, int shift, int len)
-{
-    uint64_t mask;
-
-    if (len == 0) {
-        mask = ~0LL;
-    } else {
-        mask = (1ULL << len) - 1;
-    }
-    return (src >> shift) & mask;
-}
-
-void helper_extrq_r(CPUX86State *env, ZMMReg *d, ZMMReg *s)
-{
-    d->ZMM_Q(0) = helper_extrq(d->ZMM_Q(0), s->ZMM_B(1), s->ZMM_B(0));
-}
-
-void helper_extrq_i(CPUX86State *env, ZMMReg *d, int index, int length)
-{
-    d->ZMM_Q(0) = helper_extrq(d->ZMM_Q(0), index, length);
-}
-
-static inline uint64_t helper_insertq(uint64_t src, int shift, int len)
-{
-    uint64_t mask;
-
-    if (len == 0) {
-        mask = ~0ULL;
-    } else {
-        mask = (1ULL << len) - 1;
-    }
-    return (src & ~(mask << shift)) | ((src & mask) << shift);
-}
-
-void helper_insertq_r(CPUX86State *env, ZMMReg *d, ZMMReg *s)
-{
-    d->ZMM_Q(0) = helper_insertq(s->ZMM_Q(0), s->ZMM_B(9), s->ZMM_B(8));
-}
-
-void helper_insertq_i(CPUX86State *env, ZMMReg *d, int index, int length)
-{
-    d->ZMM_Q(0) = helper_insertq(d->ZMM_Q(0), index, length);
-}
-
 /* XXX: unordered */
 #define SSE_HELPER_CMP(name, F)                                         \
     void helper_ ## name ## ps(CPUX86State *env, Reg *d, Reg *s)        \

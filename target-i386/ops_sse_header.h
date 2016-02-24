@@ -98,11 +98,6 @@ DEF_HELPER_2(cvttss2sq, s64, env, ZMMReg)
 DEF_HELPER_2(cvttsd2sq, s64, env, ZMMReg)
 #endif
 
-DEF_HELPER_3(extrq_r, void, env, ZMMReg, ZMMReg)
-DEF_HELPER_4(extrq_i, void, env, ZMMReg, int, int)
-DEF_HELPER_3(insertq_r, void, env, ZMMReg, ZMMReg)
-DEF_HELPER_4(insertq_i, void, env, ZMMReg, int, int)
-
 #define SSE_HELPER_CMP(name, F)                           \
     DEF_HELPER_3(name ## ps, void, env, Reg, Reg)         \
     DEF_HELPER_3(name ## ss, void, env, Reg, Reg)         \
