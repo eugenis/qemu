@@ -114,3 +114,13 @@ target_ulong helper_d_ucomi(CPUX86State *env, uint64_t a, uint64_t b)
     intptr_t ret = float64_compare_quiet(a, b, &env->sse_status);
     return comis_eflags[ret + 1];
 }
+
+uint32_t helper_cvtd2s(CPUX86State *env, uint64_t a)
+{
+    return float64_to_float32(a, &env->sse_status);
+}
+
+uint64_t helper_cvts2d(CPUX86State *env, uint32_t a)
+{
+    return float32_to_float64(a, &env->sse_status);
+}

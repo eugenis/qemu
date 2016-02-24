@@ -2691,8 +2691,8 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0x57] = { SSE_SPECIAL, SSE_SPECIAL }, /* xorps, xorpd */
     [0x58] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(add) */
     [0x59] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(mul) */
-    [0x5a] = { gen_helper_cvtps2pd, gen_helper_cvtpd2ps,
-               gen_helper_cvtss2sd, gen_helper_cvtsd2ss },
+    [0x5a] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL },
+             /* cvtps2pd, cvtpd2ps, cvtss2sd, cvtsd2ss */
     [0x5b] = { gen_helper_cvtdq2ps, gen_helper_cvtps2dq, gen_helper_cvttps2dq },
     [0x5c] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(sub) */
     [0x5d] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(min) */
@@ -3221,11 +3221,11 @@ static void ld_xmm_src2_s(DisasContext *s, VecData *data)
     }
 }
 
-static void prep_xmm_unary_s(DisasContext *s, VecData *data)
+static void prep_xmm_unary_s(DisasContext *s, VecData *data, int outf)
 {
     ld_xmm_src2_s(s, data);
     data->in1f = 0;
-    prep_output(data, VEC_ARG_32);
+    prep_output(data, outf);
 }
 
 static void prep_xmm_binary_s(DisasContext *s, VecData *data)
@@ -3246,7 +3246,7 @@ static void do_xmm_unary_env(DisasContext *s, VecData *data,
 
 static void do_xmm_unary_ss(DisasContext *s, VecData *data, func_unary_ss func)
 {
-    prep_xmm_unary_s(s, data);
+    prep_xmm_unary_s(s, data, VEC_ARG_32);
     func(data->out.s, cpu_env, data->in2.s);
     finish_xmm_s(s, data);
 }
@@ -4905,6 +4905,32 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
     case OP(59,F3): /* mulss */
         do_xmm_binary_ss(s, &data, gen_helper_ss_mul);
+        break;
+
+    case OP(5a,00): /* cvtps2pd */
+        prep_xmm_unary(s, &data, VEC_ARG_N, VEC_ARG_0);
+        tcg_gen_extr_i64_i32(cpu_tmp2_i32, cpu_tmp3_i32, data.in2.q[0]);
+        gen_helper_cvts2d(data.out.q[0], cpu_env, cpu_tmp2_i32);
+        gen_helper_cvts2d(data.out.q[1], cpu_env, cpu_tmp3_i32);
+        finish_xmm(s, &data);
+        break;
+    case OP(5a,66): /* cvtpd2ps */
+        prep_xmm_unary(s, &data, VEC_ARG_N, VEC_ARG_N);
+        gen_helper_cvtd2s(cpu_tmp2_i32, cpu_env, data.in2.q[0]);
+        gen_helper_cvtd2s(cpu_tmp3_i32, cpu_env, data.in2.q[1]);
+        tcg_gen_concat_i32_i64(data.out.q[0], cpu_tmp2_i32, cpu_tmp3_i32);
+        tcg_gen_movi_i64(data.out.q[1], 0);
+        finish_xmm(s, &data);
+        break;
+    case OP(5a,F2): /* cvtsd2ss */
+        prep_xmm_unary(s, &data, VEC_ARG_32, VEC_ARG_0);
+        gen_helper_cvtd2s(data.out.s, cpu_env, data.in2.q[0]);
+        finish_xmm_s(s, &data);
+        break;
+    case OP(5a,F3): /* cvtss2sd */
+        prep_xmm_unary_s(s, &data, VEC_ARG_0);
+        gen_helper_cvts2d(data.out.q[0], cpu_env, data.in2.s);
+        finish_xmm(s, &data);
         break;
 
     case OP(5c,00): /* subps */

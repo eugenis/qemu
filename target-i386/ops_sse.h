@@ -261,34 +261,6 @@ void glue(helper_movq_mm_T0, SUFFIX)(Reg *d, uint64_t val)
 /* FPU ops */
 /* XXX: not accurate */
 
-/* float to float conversions */
-void helper_cvtps2pd(CPUX86State *env, Reg *d, Reg *s)
-{
-    float32 s0, s1;
-
-    s0 = s->ZMM_S(0);
-    s1 = s->ZMM_S(1);
-    d->ZMM_D(0) = float32_to_float64(s0, &env->sse_status);
-    d->ZMM_D(1) = float32_to_float64(s1, &env->sse_status);
-}
-
-void helper_cvtpd2ps(CPUX86State *env, Reg *d, Reg *s)
-{
-    d->ZMM_S(0) = float64_to_float32(s->ZMM_D(0), &env->sse_status);
-    d->ZMM_S(1) = float64_to_float32(s->ZMM_D(1), &env->sse_status);
-    d->Q(1) = 0;
-}
-
-void helper_cvtss2sd(CPUX86State *env, Reg *d, Reg *s)
-{
-    d->ZMM_D(0) = float32_to_float64(s->ZMM_S(0), &env->sse_status);
-}
-
-void helper_cvtsd2ss(CPUX86State *env, Reg *d, Reg *s)
-{
-    d->ZMM_S(0) = float64_to_float32(s->ZMM_D(0), &env->sse_status);
-}
-
 /* integer to float */
 void helper_cvtdq2ps(CPUX86State *env, Reg *d, Reg *s)
 {
