@@ -1575,18 +1575,6 @@ void helper_ldmxcsr(CPUX86State *env, uint32_t val)
     cpu_set_mxcsr(env, val);
 }
 
-void helper_enter_mmx(CPUX86State *env)
-{
-    env->fpstt = 0;
-    env->fptags = 0;
-}
-
-void helper_emms(CPUX86State *env)
-{
-    /* set to empty state */
-    env->fptags = 0xff;
-}
-
 /* XXX: suppress */
 void helper_movq(CPUX86State *env, void *d, void *s)
 {

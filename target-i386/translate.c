@@ -127,9 +127,10 @@ typedef struct DisasContext {
     int cpl;
     int iopl;
     int tf;     /* TF cpu flag */
-    int singlestep_enabled; /* "hardware" single step enabled */
-    int jmp_opt; /* use direct block chaining for direct jumps */
-    int repz_opt; /* optimize jumps within repz instructions */
+    bool singlestep_enabled; /* "hardware" single step enabled */
+    bool jmp_opt; /* use direct block chaining for direct jumps */
+    bool repz_opt; /* optimize jumps within repz instructions */
+    bool mmx_entered; /* mmx has been entered in this TB */
     int mem_index; /* select memory access functions */
     uint64_t flags; /* all execution flags */
     struct TranslationBlock *tb;
@@ -2609,6 +2610,25 @@ static inline void gen_op_movq_env_0(int d_offset)
     tcg_gen_st_i64(cpu_tmp1_i64, cpu_env, d_offset);
 }
 
+static void gen_enter_mmx(DisasContext *s)
+{
+    if (!s->mmx_entered) {
+        TCGv_i32 z = tcg_const_i32(0);
+        tcg_gen_st_i32(z, cpu_env, offsetof(CPUX86State, fpstt));
+        tcg_gen_st16_i32(z, cpu_env, offsetof(CPUX86State, fptags));
+        tcg_temp_free_i32(z);
+        s->mmx_entered = true;
+    }
+}
+
+static void gen_emms(DisasContext *s)
+{
+    TCGv_i32 t = tcg_const_i32(0xff);
+    tcg_gen_st16_i32(t, cpu_env, offsetof(CPUX86State, fptags));
+    tcg_temp_free_i32(t);
+    s->mmx_entered = false;
+}
+
 typedef void (*SSEFunc_i_ep)(TCGv_i32 val, TCGv_ptr env, TCGv_ptr reg);
 typedef void (*SSEFunc_l_ep)(TCGv_i64 val, TCGv_ptr env, TCGv_ptr reg);
 typedef void (*SSEFunc_0_epi)(TCGv_ptr env, TCGv_ptr reg, TCGv_i32 val);
@@ -2993,18 +3013,18 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
             goto unknown_op;
         }
         /* femms */
-        gen_helper_emms(cpu_env);
+        gen_emms(s);
         return;
     }
     if (b == 0x77) {
         /* emms */
-        gen_helper_emms(cpu_env);
+        gen_emms(s);
         return;
     }
     /* prepare MMX state (XXX: optimize by storing fptt and fptags in
        the static cpu state) */
     if (!is_xmm) {
-        gen_helper_enter_mmx(cpu_env);
+        gen_enter_mmx(s);
     }
 
     modrm = insn_get_ub(s);
@@ -3393,7 +3413,7 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
             break;
         case 0x02a: /* cvtpi2ps */
         case 0x12a: /* cvtpi2pd */
-            gen_helper_enter_mmx(cpu_env);
+            gen_enter_mmx(s);
             if (mod != 3) {
                 gen_lea_modrm(s, modrm);
                 op2_offset = offsetof(CPUX86State,mmx_t0);
@@ -3438,7 +3458,7 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         case 0x12c: /* cvttpd2pi */
         case 0x02d: /* cvtps2pi */
         case 0x12d: /* cvtpd2pi */
-            gen_helper_enter_mmx(cpu_env);
+            gen_enter_mmx(s);
             if (mod != 3) {
                 gen_lea_modrm(s, modrm);
                 op2_offset = offsetof(CPUX86State,xmm_t0);
@@ -3548,14 +3568,14 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
             }
             break;
         case 0x2d6: /* movq2dq */
-            gen_helper_enter_mmx(cpu_env);
+            gen_enter_mmx(s);
             rm = (modrm & 7);
             gen_op_movq(offsetof(CPUX86State,xmm_regs[reg].ZMM_Q(0)),
                         offsetof(CPUX86State,fpregs[rm].mmx));
             gen_op_movq_env_0(offsetof(CPUX86State,xmm_regs[reg].ZMM_Q(1)));
             break;
         case 0x3d6: /* movdq2q */
-            gen_helper_enter_mmx(cpu_env);
+            gen_enter_mmx(s);
             rm = (modrm & 7) | REX_B(s);
             gen_op_movq(offsetof(CPUX86State,fpregs[reg & 7].mmx),
                         offsetof(CPUX86State,xmm_regs[rm].ZMM_Q(0)));
@@ -8274,6 +8294,7 @@ void gen_intermediate_code(CPUX86State *env, TranslationBlock *tb)
        additional step for ecx=0 when icount is enabled.
      */
     dc->repz_opt = !dc->jmp_opt && !(tb->cflags & CF_USE_ICOUNT);
+    dc->mmx_entered = false;
 #if 0
     /* check addseg logic */
     if (!dc->addseg && (dc->vm86 || !dc->pe || !dc->code32))
