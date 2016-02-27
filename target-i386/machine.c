@@ -297,15 +297,10 @@ static void cpu_pre_save(void *opaque)
 {
     X86CPU *cpu = opaque;
     CPUX86State *env = &cpu->env;
-    int i;
 
     /* FPU */
     env->fpus_vmstate = (env->fpus & ~0x3800) | (env->fpstt & 0x7) << 11;
-    env->fptag_vmstate = 0;
-    for(i = 0; i < 8; i++) {
-        env->fptag_vmstate |= ((!env->fptags[i]) << i);
-    }
-
+    env->fptag_vmstate = env->fptags ^ 0xff;
     env->fpregs_format_vmstate = 0;
 
     /*
@@ -332,7 +327,6 @@ static int cpu_post_load(void *opaque, int version_id)
     X86CPU *cpu = opaque;
     CPUState *cs = CPU(cpu);
     CPUX86State *env = &cpu->env;
-    int i;
 
     if (env->tsc_khz && env->user_tsc_khz &&
         env->tsc_khz != env->user_tsc_khz) {
@@ -369,10 +363,7 @@ static int cpu_post_load(void *opaque, int version_id)
 
     env->fpstt = (env->fpus_vmstate >> 11) & 7;
     env->fpus = env->fpus_vmstate & ~0x3800;
-    env->fptag_vmstate ^= 0xff;
-    for(i = 0; i < 8; i++) {
-        env->fptags[i] = (env->fptag_vmstate >> i) & 1;
-    }
+    env->fptags = env->fptag_vmstate ^ 0xff;
     update_fp_status(env);
 
     cpu_breakpoint_remove_all(cs, BP_CPU);

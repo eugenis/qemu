@@ -59,12 +59,12 @@
 static inline void fpush(CPUX86State *env)
 {
     env->fpstt = (env->fpstt - 1) & 7;
-    env->fptags[env->fpstt] = 0; /* validate stack entry */
+    env->fptags &= ~(1 << env->fpstt); /* validate stack entry */
 }
 
 static inline void fpop(CPUX86State *env)
 {
-    env->fptags[env->fpstt] = 1; /* invalidate stack entry */
+    env->fptags |= 1 << env->fpstt; /* invalidate stack entry */
     env->fpstt = (env->fpstt + 1) & 7;
 }
 
@@ -179,7 +179,7 @@ void helper_flds_ST0(CPUX86State *env, uint32_t val)
     u.i = val;
     env->fpregs[new_fpstt].d = float32_to_floatx80(u.f, &env->fp_status);
     env->fpstt = new_fpstt;
-    env->fptags[new_fpstt] = 0; /* validate stack entry */
+    env->fptags &= ~(1 << new_fpstt); /* validate stack entry */
 }
 
 void helper_fldl_ST0(CPUX86State *env, uint64_t val)
@@ -194,7 +194,7 @@ void helper_fldl_ST0(CPUX86State *env, uint64_t val)
     u.i = val;
     env->fpregs[new_fpstt].d = float64_to_floatx80(u.f, &env->fp_status);
     env->fpstt = new_fpstt;
-    env->fptags[new_fpstt] = 0; /* validate stack entry */
+    env->fptags &= ~(1 << new_fpstt); /* validate stack entry */
 }
 
 void helper_fildl_ST0(CPUX86State *env, int32_t val)
@@ -204,7 +204,7 @@ void helper_fildl_ST0(CPUX86State *env, int32_t val)
     new_fpstt = (env->fpstt - 1) & 7;
     env->fpregs[new_fpstt].d = int32_to_floatx80(val, &env->fp_status);
     env->fpstt = new_fpstt;
-    env->fptags[new_fpstt] = 0; /* validate stack entry */
+    env->fptags &= ~(1 << new_fpstt); /* validate stack entry */
 }
 
 void helper_fildll_ST0(CPUX86State *env, int64_t val)
@@ -214,7 +214,7 @@ void helper_fildll_ST0(CPUX86State *env, int64_t val)
     new_fpstt = (env->fpstt - 1) & 7;
     env->fpregs[new_fpstt].d = int64_to_floatx80(val, &env->fp_status);
     env->fpstt = new_fpstt;
-    env->fptags[new_fpstt] = 0; /* validate stack entry */
+    env->fptags &= ~(1 << new_fpstt); /* validate stack entry */
 }
 
 uint32_t helper_fsts_ST0(CPUX86State *env)
@@ -318,7 +318,7 @@ void helper_fldt_ST0(CPUX86State *env, target_ulong ptr)
     new_fpstt = (env->fpstt - 1) & 7;
     env->fpregs[new_fpstt].d = helper_fldt(env, ptr, GETPC());
     env->fpstt = new_fpstt;
-    env->fptags[new_fpstt] = 0; /* validate stack entry */
+    env->fptags &= ~(1 << new_fpstt); /* validate stack entry */
 }
 
 void helper_fstt_ST0(CPUX86State *env, target_ulong ptr)
@@ -352,7 +352,7 @@ void helper_fincstp(CPUX86State *env)
 
 void helper_ffree_STN(CPUX86State *env, int st_index)
 {
-    env->fptags[(env->fpstt + st_index) & 7] = 1;
+    env->fptags |= 1 << ((env->fpstt + st_index) & 7);
 }
 
 void helper_fmov_ST0_FT0(CPUX86State *env)
@@ -615,14 +615,7 @@ void helper_fninit(CPUX86State *env)
     env->fpus = 0;
     env->fpstt = 0;
     cpu_set_fpuc(env, 0x37f);
-    env->fptags[0] = 1;
-    env->fptags[1] = 1;
-    env->fptags[2] = 1;
-    env->fptags[3] = 1;
-    env->fptags[4] = 1;
-    env->fptags[5] = 1;
-    env->fptags[6] = 1;
-    env->fptags[7] = 1;
+    env->fptags = 0xff;
 }
 
 /* BCD ops */
@@ -991,7 +984,7 @@ static void do_fstenv(CPUX86State *env, target_ulong ptr, int data32,
     fptag = 0;
     for (i = 7; i >= 0; i--) {
         fptag <<= 2;
-        if (env->fptags[i]) {
+        if (env->fptags & (1 << i)) {
             fptag |= 3;
         } else {
             tmp.d = env->fpregs[i].d;
@@ -1036,7 +1029,7 @@ void helper_fstenv(CPUX86State *env, target_ulong ptr, int data32)
 static void do_fldenv(CPUX86State *env, target_ulong ptr, int data32,
                       uintptr_t retaddr)
 {
-    int i, fpus, fptag;
+    int i, fpus, fptag, fptags;
 
     if (data32) {
         cpu_set_fpuc(env, cpu_lduw_data_ra(env, ptr, retaddr));
@@ -1049,10 +1042,13 @@ static void do_fldenv(CPUX86State *env, target_ulong ptr, int data32,
     }
     env->fpstt = (fpus >> 11) & 7;
     env->fpus = fpus & ~0x3800;
+
+    fptags = 0;
     for (i = 0; i < 8; i++) {
-        env->fptags[i] = ((fptag & 3) == 3);
+        fptags |= ((fptag & 3) == 3) << i;
         fptag >>= 2;
     }
+    env->fptags = fptags;
 }
 
 void helper_fldenv(CPUX86State *env, target_ulong ptr, int data32)
@@ -1077,15 +1073,8 @@ void helper_fsave(CPUX86State *env, target_ulong ptr, int data32)
     /* fninit */
     env->fpus = 0;
     env->fpstt = 0;
+    env->fptags = 0xff;
     cpu_set_fpuc(env, 0x37f);
-    env->fptags[0] = 1;
-    env->fptags[1] = 1;
-    env->fptags[2] = 1;
-    env->fptags[3] = 1;
-    env->fptags[4] = 1;
-    env->fptags[5] = 1;
-    env->fptags[6] = 1;
-    env->fptags[7] = 1;
 }
 
 void helper_frstor(CPUX86State *env, target_ulong ptr, int data32)
@@ -1117,17 +1106,13 @@ void cpu_x86_frstor(CPUX86State *env, target_ulong ptr, int data32)
 
 static void do_xsave_fpu(CPUX86State *env, target_ulong ptr, uintptr_t ra)
 {
-    int fpus, fptag, i;
+    int fpus, i;
     target_ulong addr;
 
     fpus = (env->fpus & ~0x3800) | (env->fpstt & 0x7) << 11;
-    fptag = 0;
-    for (i = 0; i < 8; i++) {
-        fptag |= (env->fptags[i] << i);
-    }
     cpu_stw_data_ra(env, ptr, env->fpuc, ra);
     cpu_stw_data_ra(env, ptr + 2, fpus, ra);
-    cpu_stw_data_ra(env, ptr + 4, fptag ^ 0xff, ra);
+    cpu_stw_data_ra(env, ptr + 4, env->fptags ^ 0xff, ra);
 
     /* In 32-bit mode this is eip, sel, dp, sel.
        In 64-bit mode this is rip, rdp.
@@ -1294,10 +1279,7 @@ static void do_xrstor_fpu(CPUX86State *env, target_ulong ptr, uintptr_t ra)
     fptag = cpu_lduw_data_ra(env, ptr + 4, ra);
     env->fpstt = (fpus >> 11) & 7;
     env->fpus = fpus & ~0x3800;
-    fptag ^= 0xff;
-    for (i = 0; i < 8; i++) {
-        env->fptags[i] = ((fptag >> i) & 1);
-    }
+    env->fptags = fptag ^ 0xff;
 
     addr = ptr + 0x20;
     for (i = 0; i < 8; i++) {
@@ -1596,15 +1578,13 @@ void helper_ldmxcsr(CPUX86State *env, uint32_t val)
 void helper_enter_mmx(CPUX86State *env)
 {
     env->fpstt = 0;
-    *(uint32_t *)(env->fptags) = 0;
-    *(uint32_t *)(env->fptags + 4) = 0;
+    env->fptags = 0;
 }
 
 void helper_emms(CPUX86State *env)
 {
     /* set to empty state */
-    *(uint32_t *)(env->fptags) = 0x01010101;
-    *(uint32_t *)(env->fptags + 4) = 0x01010101;
+    env->fptags = 0xff;
 }
 
 /* XXX: suppress */

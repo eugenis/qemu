@@ -1274,9 +1274,7 @@ static int kvm_put_fpu(X86CPU *cpu)
     fpu.last_opcode = env->fpop;
     fpu.last_ip = env->fpip;
     fpu.last_dp = env->fpdp;
-    for (i = 0; i < 8; ++i) {
-        fpu.ftwx |= (!env->fptags[i]) << i;
-    }
+    fpu.ftwx = env->fptags ^ 0xff;
     memcpy(fpu.fpr, env->fpregs, sizeof env->fpregs);
     for (i = 0; i < CPU_NB_REGS; i++) {
         stq_p(&fpu.xmm[i][0], env->xmm_regs[i].ZMM_Q(0));
@@ -1316,13 +1314,10 @@ static int kvm_put_xsave(X86CPU *cpu)
     }
 
     memset(xsave, 0, sizeof(struct kvm_xsave));
-    twd = 0;
     swd = env->fpus & ~(7 << 11);
     swd |= (env->fpstt & 7) << 11;
     cwd = env->fpuc;
-    for (i = 0; i < 8; ++i) {
-        twd |= (!env->fptags[i]) << i;
-    }
+    twd = env->fptags ^ 0xff;
     xsave->region[XSAVE_FCW_FSW] = (uint32_t)(swd << 16) + cwd;
     xsave->region[XSAVE_FTW_FOP] = (uint32_t)(env->fpop << 16) + twd;
     memcpy(&xsave->region[XSAVE_CWD_RIP], &env->fpip, sizeof(env->fpip));
@@ -1704,9 +1699,7 @@ static int kvm_get_fpu(X86CPU *cpu)
     env->fpop = fpu.last_opcode;
     env->fpip = fpu.last_ip;
     env->fpdp = fpu.last_dp;
-    for (i = 0; i < 8; ++i) {
-        env->fptags[i] = !((fpu.ftwx >> i) & 1);
-    }
+    env->fptags = fpu.ftwx ^ 0xff;
     memcpy(env->fpregs, fpu.fpr, sizeof env->fpregs);
     for (i = 0; i < CPU_NB_REGS; i++) {
         env->xmm_regs[i].ZMM_Q(0) = ldq_p(&fpu.xmm[i][0]);
@@ -1741,9 +1734,7 @@ static int kvm_get_xsave(X86CPU *cpu)
     env->fpstt = (swd >> 11) & 7;
     env->fpus = swd;
     env->fpuc = cwd;
-    for (i = 0; i < 8; ++i) {
-        env->fptags[i] = !((twd >> i) & 1);
-    }
+    env->fptags = twd ^ 0xff;
     memcpy(&env->fpip, &xsave->region[XSAVE_CWD_RIP], sizeof(env->fpip));
     memcpy(&env->fpdp, &xsave->region[XSAVE_CWD_RDP], sizeof(env->fpdp));
     env->mxcsr = xsave->region[XSAVE_MXCSR];

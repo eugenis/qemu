@@ -508,16 +508,11 @@ void x86_cpu_dump_state(CPUState *cs, FILE *f, fprintf_function cpu_fprintf,
     }
     cpu_fprintf(f, "EFER=%016" PRIx64 "\n", env->efer);
     if (flags & CPU_DUMP_FPU) {
-        int fptag;
-        fptag = 0;
-        for(i = 0; i < 8; i++) {
-            fptag |= ((!env->fptags[i]) << i);
-        }
         cpu_fprintf(f, "FCW=%04x FSW=%04x [ST=%d] FTW=%02x MXCSR=%08x\n",
                     env->fpuc,
                     (env->fpus & ~0x3800) | (env->fpstt & 0x7) << 11,
                     env->fpstt,
-                    fptag,
+                    env->fptags ^ 0xff,
                     env->mxcsr);
         for(i=0;i<8;i++) {
             CPU_LDoubleU u;

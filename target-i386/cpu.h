@@ -874,7 +874,7 @@ typedef struct CPUX86State {
     unsigned int fpstt; /* top of stack index */
     uint16_t fpus;
     uint16_t fpuc;
-    uint8_t fptags[8];   /* 0 = valid, 1 = empty */
+    uint16_t fptags;
     FPReg fpregs[8];
     /* KVM-only so far */
     uint16_t fpop;

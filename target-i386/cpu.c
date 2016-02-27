@@ -2657,7 +2657,6 @@ static void x86_cpu_reset(CPUState *s)
     CPUX86State *env = &cpu->env;
     target_ulong cr4;
     uint64_t xcr0;
-    int i;
 
     xcc->parent_reset(s);
 
@@ -2710,9 +2709,7 @@ static void x86_cpu_reset(CPUState *s)
     env->eflags = 0x2;
 
     /* FPU init */
-    for (i = 0; i < 8; i++) {
-        env->fptags[i] = 1;
-    }
+    env->fptags = 0xff;
     cpu_set_fpuc(env, 0x37f);
 
     env->mxcsr = 0x1f80;
