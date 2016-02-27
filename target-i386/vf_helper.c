@@ -160,9 +160,24 @@ target_ulong helper_d_ucomi(CPUX86State *env, uint64_t a, uint64_t b)
     return comis_eflags[ret + 1];
 }
 
+int32_t helper_cvtd2i(CPUX86State *env, uint64_t a)
+{
+    return float64_to_int32(a, &env->sse_status);
+}
+
+int32_t helper_cvttd2i(CPUX86State *env, uint64_t a)
+{
+    return float64_to_int32_round_to_zero(a, &env->sse_status);
+}
+
 uint32_t helper_cvtd2s(CPUX86State *env, uint64_t a)
 {
     return float64_to_float32(a, &env->sse_status);
+}
+
+uint64_t helper_cvti2d(CPUX86State *env, int32_t a)
+{
+    return int32_to_float64(a, &env->sse_status);
 }
 
 uint64_t helper_cvts2d(CPUX86State *env, uint32_t a)

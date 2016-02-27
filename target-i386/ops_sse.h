@@ -261,16 +261,6 @@ void glue(helper_movq_mm_T0, SUFFIX)(Reg *d, uint64_t val)
 /* FPU ops */
 /* XXX: not accurate */
 
-void helper_cvtdq2pd(CPUX86State *env, Reg *d, Reg *s)
-{
-    int32_t l0, l1;
-
-    l0 = (int32_t)s->ZMM_L(0);
-    l1 = (int32_t)s->ZMM_L(1);
-    d->ZMM_D(0) = int32_to_float64(l0, &env->sse_status);
-    d->ZMM_D(1) = int32_to_float64(l1, &env->sse_status);
-}
-
 void helper_cvtpi2ps(CPUX86State *env, ZMMReg *d, MMXReg *s)
 {
     d->ZMM_S(0) = int32_to_float32(s->MMX_L(0), &env->sse_status);
@@ -305,13 +295,6 @@ void helper_cvtsq2sd(CPUX86State *env, ZMMReg *d, uint64_t val)
 }
 #endif
 
-void helper_cvtpd2dq(CPUX86State *env, ZMMReg *d, ZMMReg *s)
-{
-    d->ZMM_L(0) = float64_to_int32(s->ZMM_D(0), &env->sse_status);
-    d->ZMM_L(1) = float64_to_int32(s->ZMM_D(1), &env->sse_status);
-    d->ZMM_Q(1) = 0;
-}
-
 void helper_cvtps2pi(CPUX86State *env, MMXReg *d, ZMMReg *s)
 {
     d->MMX_L(0) = float32_to_int32(s->ZMM_S(0), &env->sse_status);
@@ -345,13 +328,6 @@ int64_t helper_cvtsd2sq(CPUX86State *env, ZMMReg *s)
     return float64_to_int64(s->ZMM_D(0), &env->sse_status);
 }
 #endif
-
-void helper_cvttpd2dq(CPUX86State *env, ZMMReg *d, ZMMReg *s)
-{
-    d->ZMM_L(0) = float64_to_int32_round_to_zero(s->ZMM_D(0), &env->sse_status);
-    d->ZMM_L(1) = float64_to_int32_round_to_zero(s->ZMM_D(1), &env->sse_status);
-    d->ZMM_Q(1) = 0;
-}
 
 void helper_cvttps2pi(CPUX86State *env, MMXReg *d, ZMMReg *s)
 {

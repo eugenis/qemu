@@ -2763,7 +2763,8 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0xe3] = { SSE_SPECIAL, SSE_SPECIAL }, /* pavgw */
     [0xe4] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmulhuw */
     [0xe5] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmulhw */
-    [0xe6] = { NULL, gen_helper_cvttpd2dq, gen_helper_cvtdq2pd, gen_helper_cvtpd2dq },
+    [0xe6] = { NULL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL },
+             /* cvttpd2dq, cvtdq2pd, cvtpd2dq */
     [0xe7] = { SSE_SPECIAL, SSE_SPECIAL }, /* movntq, movntq */
     [0xe8] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubsb */
     [0xe9] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubsw */
@@ -5402,6 +5403,30 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
     case OP(e5,66): /* pmulhw xmm */
         do_xmm_binary(s, &data, gen_helper_vec_mulhw);
+        break;
+
+    case OP(e6,66): /* cvttpd2dq */
+        prep_xmm_unary(s, &data, VEC_ARG_N, VEC_ARG_N);
+        gen_helper_cvttd2i(cpu_tmp2_i32, cpu_env, data.in2.q[0]);
+        gen_helper_cvttd2i(cpu_tmp3_i32, cpu_env, data.in2.q[1]);
+        tcg_gen_concat_i32_i64(data.out.q[0], cpu_tmp2_i32, cpu_tmp3_i32);
+        tcg_gen_movi_i64(data.out.q[1], 0);
+        finish_xmm(s, &data);
+        break;
+    case OP(e6,F2): /* cvtdq2pd */
+        prep_xmm_unary(s, &data, VEC_ARG_N, VEC_ARG_0);
+        tcg_gen_extr_i64_i32(cpu_tmp2_i32, cpu_tmp3_i32, data.in2.q[0]);
+        gen_helper_cvti2d(data.out.q[0], cpu_env, cpu_tmp2_i32);
+        gen_helper_cvti2d(data.out.q[1], cpu_env, cpu_tmp3_i32);
+        finish_xmm(s, &data);
+        break;
+    case OP(e6,F3): /* cvtpd2dq */
+        prep_xmm_unary(s, &data, VEC_ARG_N, VEC_ARG_N);
+        gen_helper_cvtd2i(cpu_tmp2_i32, cpu_env, data.in2.q[0]);
+        gen_helper_cvtd2i(cpu_tmp3_i32, cpu_env, data.in2.q[1]);
+        tcg_gen_concat_i32_i64(data.out.q[0], cpu_tmp2_i32, cpu_tmp3_i32);
+        tcg_gen_movi_i64(data.out.q[1], 0);
+        finish_xmm(s, &data);
         break;
 
     case OP(e8,00): /* psubsb mm */
