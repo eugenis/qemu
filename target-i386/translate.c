@@ -2700,7 +2700,7 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0x5e] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(div) */
     [0x5f] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(max) */
 
-    [0xc2] = SSE_FOP(cmpeq),
+    [0xc2] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(cmpeq) */
     [0xc6] = { SSE_SPECIAL, SSE_SPECIAL }, /* shufps, shufpd */
 
     /* SSSE3, SSE4, MOVBE, CRC32, BMI1, BMI2, ADX.  */
@@ -2824,17 +2824,6 @@ static const SSEFunc_l_ep sse_op_table3bq[] = {
     gen_helper_cvtsd2sq
 };
 #endif
-
-static const SSEFunc_0_epp sse_op_table4[8][4] = {
-    SSE_FOP(cmpeq),
-    SSE_FOP(cmplt),
-    SSE_FOP(cmple),
-    SSE_FOP(cmpunord),
-    SSE_FOP(cmpneq),
-    SSE_FOP(cmpnlt),
-    SSE_FOP(cmpnle),
-    SSE_FOP(cmpord),
-};
 
 static const SSEFunc_0_epp sse_op_table5[256] = {
     [0x0c] = gen_helper_pi2fw,
@@ -4716,13 +4705,6 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         }
     } else {
         /* generic MMX or SSE operation */
-        switch(b) {
-        case 0xc2: /* compare insns */
-            s->rip_offset = 1;
-            break;
-        default:
-            break;
-        }
         if (is_xmm) {
             op1_offset = offsetof(CPUX86State,xmm_regs[reg]);
             if (mod != 3) {
@@ -4734,7 +4716,6 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
                 switch (b) {
                 case 0x50 ... 0x5a:
                 case 0x5c ... 0x5f:
-                case 0xc2:
                     /* Most sse scalar operations.  */
                     if (b1 == 2) {
                         sz = 2;
@@ -4787,17 +4768,6 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
             if (!(s->cpuid_ext2_features & CPUID_EXT2_3DNOW)) {
                 goto illegal_op;
             }
-            tcg_gen_addi_ptr(cpu_ptr0, cpu_env, op1_offset);
-            tcg_gen_addi_ptr(cpu_ptr1, cpu_env, op2_offset);
-            sse_fn_epp(cpu_env, cpu_ptr0, cpu_ptr1);
-            break;
-        case 0xc2:
-            /* compare insns */
-            val = insn_get_ub(s);
-            if (val >= 8)
-                goto unknown_op;
-            sse_fn_epp = sse_op_table4[val][b1];
-
             tcg_gen_addi_ptr(cpu_ptr0, cpu_env, op1_offset);
             tcg_gen_addi_ptr(cpu_ptr1, cpu_env, op2_offset);
             sse_fn_epp(cpu_env, cpu_ptr0, cpu_ptr1);
@@ -5239,6 +5209,34 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
     case OP(7d,F2): /* hsubps */
         do_xmm_binary_row_env(s, &data, gen_helper_ps_hsub);
+        break;
+
+    case OP(c2,00): /* cmpps */
+    case OP(c2,66): /* cmppd */
+        {
+            static const func_binary_env cmp_table[8][2] = {
+                { gen_helper_ps_cmpeq, gen_helper_d_cmpeq },
+                { gen_helper_ps_cmplt, gen_helper_d_cmplt },
+                { gen_helper_ps_cmple, gen_helper_d_cmple },
+                { gen_helper_ps_cmpunord, gen_helper_d_cmpunord },
+                { gen_helper_ps_cmpneq, gen_helper_d_cmpneq },
+                { gen_helper_ps_cmpnlt, gen_helper_d_cmpnlt },
+                { gen_helper_ps_cmpnle, gen_helper_d_cmpnle },
+                { gen_helper_ps_cmpord, gen_helper_d_cmpord },
+            };
+            func_binary_env func;
+
+            s->rip_offset = 1;
+            prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_N, VEC_ARG_N);
+            sel = insn_get_ub(s);
+            if (sel >= 8) {
+                goto unknown_op;
+            }
+            func = cmp_table[sel][b1 == PREFIX_66];
+            func(data.out.q[0], cpu_env, data.in1.q[0], data.in2.q[0]);
+            func(data.out.q[1], cpu_env, data.in1.q[1], data.in2.q[1]);
+            finish_xmm(s, &data);
+        }
         break;
 
     case OP(c6,00): /* shufps xmm */

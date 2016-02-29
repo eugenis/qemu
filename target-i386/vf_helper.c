@@ -55,7 +55,6 @@ uint64_t helper_d_## NAME(CPUX86State *env, uint64_t a, uint64_t b)     \
     return float64_##F(a, b, &env->sse_status);                         \
 }
 
-
 HELPERS_2(add, add)
 HELPERS_2(sub, sub)
 HELPERS_2(mul, mul)
@@ -133,6 +132,38 @@ static inline uint64_t float64_ssemax(uint64_t a, uint64_t b, float_status *s)
 
 HELPERS_2(min, ssemin)
 HELPERS_2(max, ssemax)
+
+#define HELPERS_CMP(NAME, F)                                            \
+uint64_t helper_ps_ ## NAME(CPUX86State *env, uint64_t a, uint64_t b)   \
+{                                                                       \
+    uint32_t rl = -float32_##F(a, b, &env->sse_status);                 \
+    uint32_t rh = -float32_##F(a >> 32, b >> 32, &env->sse_status);     \
+    return ((uint64_t)rh << 32) | rl;                                   \
+}                                                                       \
+uint64_t helper_d_## NAME(CPUX86State *env, uint64_t a, uint64_t b)     \
+{                                                                       \
+    return -float64_##F(a, b, &env->sse_status);                        \
+}
+
+HELPERS_CMP(cmpeq, eq_quiet)
+HELPERS_CMP(cmplt, lt)
+HELPERS_CMP(cmple, le)
+HELPERS_CMP(cmpunord, unordered_quiet)
+
+#define HELPERS_INV(NAME, FUNC)                                        \
+uint64_t helper_ps_## NAME(CPUX86State *env, uint64_t a, uint64_t b)   \
+{                                                                      \
+    return ~helper_ps_##FUNC(env, a, b);                               \
+}                                                                      \
+uint64_t helper_d_## NAME(CPUX86State *env, uint64_t a, uint64_t b)    \
+{                                                                      \
+    return ~helper_d_##FUNC(env, a, b);                                \
+}
+
+HELPERS_INV(cmpneq, cmpeq)
+HELPERS_INV(cmpnlt, cmplt)
+HELPERS_INV(cmpnle, cmple)
+HELPERS_INV(cmpord, cmpunord)
 
 static const uint8_t comis_eflags[4] = {CC_C, CC_Z, 0, CC_Z | CC_P | CC_C};
 
