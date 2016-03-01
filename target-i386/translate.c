@@ -3322,6 +3322,8 @@ static bool isa_check_sse4a(DisasContext *s)
 
 #define ISA_CHECK(NAME) \
     do { if (!isa_check_##NAME(s)) goto illegal_op; } while (0)
+#define REQUIRE_REG \
+    do { if (((modrm >> 6) & 3) != 3) goto illegal_op; } while (0)
 
 static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
 {
@@ -5047,7 +5049,7 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
             int len, pos;
 
             ISA_CHECK(sse4a);
-            /* ??? No m128 allowed.  */
+            REQUIRE_REG;
             prep_xmm_binary(s, &data, VEC_ARG_0, VEC_ARG_0, VEC_ARG_0);
 
             len = extract32(insn_get_ub(s), 0, 6);
@@ -5067,14 +5069,14 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
 
     case OP(79,66): /* extrq xmm */
         ISA_CHECK(sse4a);
-        /* ??? No m128 allowed.  */
+        REQUIRE_REG;
         prep_xmm_binary(s, &data, VEC_ARG_0, VEC_ARG_0, VEC_ARG_0);
         gen_helper_extrq_r(data.out.q[0], data.in1.q[0], data.in2.q[0]);
         finish_xmm(s, &data);
         break;
     case OP(79,F2): /* insertq xmm */
         ISA_CHECK(sse4a);
-        /* ??? No m128 allowed.  */
+        REQUIRE_REG;
         prep_xmm_binary(s, &data, VEC_ARG_0, VEC_ARG_0, VEC_ARG_N);
         gen_helper_insertq_r(data.out.q[0], data.in1.q[0],
                              data.in2.q[0], data.in2.q[1]);
@@ -5498,7 +5500,7 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
 
     case OP(f7,00): /* maskmovq */
         ISA_CHECK(mmx);
-        /* ??? No mem allowed.  */
+        REQUIRE_REG;
         prep_mmx_binary(s, &data, 0);
         gen_lea_v_seg(s, s->aflag, cpu_regs[R_EDI], R_DS, s->override);
         gen_helper_maskmov(cpu_env, cpu_A0, data.in1.q[0], data.in2.q[0]);
@@ -5506,7 +5508,7 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
     case OP(f7,66): /* maskmovdq */
         ISA_CHECK(sse2);
-        /* ??? No mem allowed.  */
+        REQUIRE_REG;
         prep_xmm_binary(s, &data, 0, VEC_ARG_N, VEC_ARG_N);
         gen_lea_v_seg(s, s->aflag, cpu_regs[R_EDI], R_DS, s->override);
         gen_helper_maskmov(cpu_env, cpu_A0, data.in1.q[0], data.in2.q[0]);
