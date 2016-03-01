@@ -3290,6 +3290,39 @@ static void gen_shufd1(TCGv_i64 r, TCGv_i64 al, TCGv_i64 ah, int sel)
     }
 }
 
+static bool isa_check_mmx(DisasContext *s)
+{
+    return (s->cpuid_features & CPUID_MMX) != 0;
+}
+
+static bool os_check_fxsr(DisasContext *s)
+{
+    return (s->flags & HF_OSFXSR_MASK) != 0;
+}
+
+static bool isa_check_sse1(DisasContext *s)
+{
+    return (s->cpuid_features & CPUID_SSE) && os_check_fxsr(s);
+}
+
+static bool isa_check_sse2(DisasContext *s)
+{
+    return (s->cpuid_features & CPUID_SSE2) && os_check_fxsr(s);
+}
+
+static bool isa_check_sse3(DisasContext *s)
+{
+    return (s->cpuid_ext_features & CPUID_EXT_SSE3) && os_check_fxsr(s);
+}
+
+static bool isa_check_sse4a(DisasContext *s)
+{
+    return (s->cpuid_ext3_features & CPUID_EXT3_SSE4A) && os_check_fxsr(s);
+}
+
+#define ISA_CHECK(NAME) \
+    do { if (!isa_check_##NAME(s)) goto illegal_op; } while (0)
+
 static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
 {
     int b1, op1_offset, op2_offset, is_xmm, val;
@@ -4581,73 +4614,94 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
 
     switch (b * 8 + b1) {
     case OP(2e,00): /* ucomiss */
+        ISA_CHECK(sse1);
         do_xmm_comi_ss(s, &data, gen_helper_ss_ucomi);
         break;
     case OP(2e,66): /* ucomisd */
+        ISA_CHECK(sse2);
         do_xmm_comi_sd(s, &data, gen_helper_d_ucomi);
         break;
 
     case OP(2f,00): /* comiss */
+        ISA_CHECK(sse1);
         do_xmm_comi_ss(s, &data, gen_helper_ss_comi);
         break;
     case OP(2f,66): /* comisd */
+        ISA_CHECK(sse2);
         do_xmm_comi_sd(s, &data, gen_helper_d_comi);
         break;
 
     case OP(51,00): /* sqrtps */
+        ISA_CHECK(sse1);
         do_xmm_unary_env(s, &data, gen_helper_ps_sqrt);
         break;
     case OP(51,66): /* sqrtpd */
+        ISA_CHECK(sse2);
         do_xmm_unary_env(s, &data, gen_helper_d_sqrt);
         break;
-    case OP(51,F2): /* addsd */
+    case OP(51,F2): /* sqrtsd */
+        ISA_CHECK(sse2);
         do_xmm_unary_sd(s, &data, gen_helper_d_sqrt);
         break;
     case OP(51,F3): /* sqrtss */
+        ISA_CHECK(sse1);
         do_xmm_unary_ss(s, &data, gen_helper_ss_sqrt);
         break;
 
     case OP(52,00): /* rsqrtps */
+        ISA_CHECK(sse1);
         do_xmm_unary_env(s, &data, gen_helper_ps_rsqrt);
         break;
     case OP(52,F3): /* rsqrtss */
+        ISA_CHECK(sse1);
         do_xmm_unary_ss(s, &data, gen_helper_ss_rsqrt);
         break;
 
     case OP(53,00): /* rcpps */
+        ISA_CHECK(sse1);
         do_xmm_unary_env(s, &data, gen_helper_ps_rcp);
         break;
     case OP(53,F3): /* rcpss */
+        ISA_CHECK(sse1);
         do_xmm_unary_ss(s, &data, gen_helper_ss_rcp);
         break;
 
     case OP(58,00): /* addps */
+        ISA_CHECK(sse1);
         do_xmm_binary_env(s, &data, gen_helper_ps_add);
         break;
     case OP(58,66): /* addpd */
+        ISA_CHECK(sse2);
         do_xmm_binary_env(s, &data, gen_helper_d_add);
         break;
     case OP(58,F2): /* addsd */
+        ISA_CHECK(sse2);
         do_xmm_binary_sd(s, &data, gen_helper_d_add);
         break;
     case OP(58,F3): /* addss */
+        ISA_CHECK(sse1);
         do_xmm_binary_ss(s, &data, gen_helper_ss_add);
         break;
 
     case OP(59,00): /* mulps */
+        ISA_CHECK(sse1);
         do_xmm_binary_env(s, &data, gen_helper_ps_mul);
         break;
     case OP(59,66): /* mulpd */
+        ISA_CHECK(sse2);
         do_xmm_binary_env(s, &data, gen_helper_d_mul);
         break;
     case OP(59,F2): /* mulsd */
+        ISA_CHECK(sse2);
         do_xmm_binary_sd(s, &data, gen_helper_d_mul);
         break;
     case OP(59,F3): /* mulss */
+        ISA_CHECK(sse1);
         do_xmm_binary_ss(s, &data, gen_helper_ss_mul);
         break;
 
     case OP(5a,00): /* cvtps2pd */
+        ISA_CHECK(sse2);
         prep_xmm_unary(s, &data, VEC_ARG_N, VEC_ARG_0);
         tcg_gen_extr_i64_i32(cpu_tmp2_i32, cpu_tmp3_i32, data.in2.q[0]);
         gen_helper_cvts2d(data.out.q[0], cpu_env, cpu_tmp2_i32);
@@ -4655,6 +4709,7 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         finish_xmm(s, &data);
         break;
     case OP(5a,66): /* cvtpd2ps */
+        ISA_CHECK(sse2);
         prep_xmm_unary(s, &data, VEC_ARG_N, VEC_ARG_N);
         gen_helper_cvtd2s(cpu_tmp2_i32, cpu_env, data.in2.q[0]);
         gen_helper_cvtd2s(cpu_tmp3_i32, cpu_env, data.in2.q[1]);
@@ -4663,82 +4718,105 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         finish_xmm(s, &data);
         break;
     case OP(5a,F2): /* cvtsd2ss */
+        ISA_CHECK(sse2);
         prep_xmm_unary(s, &data, VEC_ARG_32, VEC_ARG_0);
         gen_helper_cvtd2s(data.out.s, cpu_env, data.in2.q[0]);
         finish_xmm_s(s, &data);
         break;
     case OP(5a,F3): /* cvtss2sd */
+        ISA_CHECK(sse2);
         prep_xmm_unary_s(s, &data, VEC_ARG_0);
         gen_helper_cvts2d(data.out.q[0], cpu_env, data.in2.s);
         finish_xmm(s, &data);
         break;
 
     case OP(5b,00): /* cvtdq2ps */
+        ISA_CHECK(sse2);
         do_xmm_unary_env(s, &data, gen_helper_cvtdq2ps);
         break;
     case OP(5b,66): /* cvtps2dq */
+        ISA_CHECK(sse2);
         do_xmm_unary_env(s, &data, gen_helper_cvtps2dq);
         break;
     case OP(5b,F3): /* cvttps2dq */
+        ISA_CHECK(sse2);
         do_xmm_unary_env(s, &data, gen_helper_cvttps2dq);
         break;
 
     case OP(5c,00): /* subps */
+        ISA_CHECK(sse1);
         do_xmm_binary_env(s, &data, gen_helper_ps_sub);
         break;
     case OP(5c,66): /* subpd */
+        ISA_CHECK(sse2);
         do_xmm_binary_env(s, &data, gen_helper_d_sub);
         break;
     case OP(5c,F2): /* subsd */
+        ISA_CHECK(sse2);
         do_xmm_binary_sd(s, &data, gen_helper_d_sub);
         break;
     case OP(5c,F3): /* subss */
+        ISA_CHECK(sse1);
         do_xmm_binary_ss(s, &data, gen_helper_ss_sub);
         break;
 
     case OP(5d,00): /* minps */
+        ISA_CHECK(sse1);
         do_xmm_binary_env(s, &data, gen_helper_ps_min);
         break;
     case OP(5d,66): /* minpd */
+        ISA_CHECK(sse2);
         do_xmm_binary_env(s, &data, gen_helper_d_min);
         break;
     case OP(5d,F2): /* minsd */
+        ISA_CHECK(sse2);
         do_xmm_binary_sd(s, &data, gen_helper_d_min);
         break;
     case OP(5d,F3): /* minss */
+        ISA_CHECK(sse1);
         do_xmm_binary_ss(s, &data, gen_helper_ss_min);
         break;
 
     case OP(5e,00): /* divps */
+        ISA_CHECK(sse1);
         do_xmm_binary_env(s, &data, gen_helper_ps_div);
         break;
     case OP(5e,66): /* divpd */
+        ISA_CHECK(sse2);
         do_xmm_binary_env(s, &data, gen_helper_d_div);
         break;
     case OP(5e,F2): /* divsd */
+        ISA_CHECK(sse2);
         do_xmm_binary_sd(s, &data, gen_helper_d_div);
         break;
     case OP(5e,F3): /* divss */
+        ISA_CHECK(sse1);
         do_xmm_binary_ss(s, &data, gen_helper_ss_div);
         break;
 
     case OP(5f,00): /* maxps */
+        ISA_CHECK(sse1);
         do_xmm_binary_env(s, &data, gen_helper_ps_max);
         break;
     case OP(5f,66): /* maxpd */
+        ISA_CHECK(sse2);
         do_xmm_binary_env(s, &data, gen_helper_d_max);
         break;
     case OP(5f,F2): /* maxsd */
+        ISA_CHECK(sse2);
         do_xmm_binary_sd(s, &data, gen_helper_d_max);
         break;
     case OP(5f,F3): /* maxss */
+        ISA_CHECK(sse1);
         do_xmm_binary_ss(s, &data, gen_helper_ss_max);
         break;
 
     case OP(60,00): /* punpcklbw mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_unpcklbw);
         break;
     case OP(60,66): /* punpcklbw xmm */
+        ISA_CHECK(sse2);
         prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_0, VEC_ARG_0);
         gen_helper_vec_unpcklbw(data.out.q[0], data.in1.q[0], data.in2.q[0]);
         gen_helper_vec_unpckhbw(data.out.q[1], data.in1.q[0], data.in2.q[0]);
@@ -4746,9 +4824,11 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
 
     case OP(61,00): /* punpcklwd mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_unpcklwd);
         break;
     case OP(61,66): /* punpcklwd xmm */
+        ISA_CHECK(sse2);
         prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_0, VEC_ARG_0);
         gen_helper_vec_unpcklwd(data.out.q[0], data.in1.q[0], data.in2.q[0]);
         gen_helper_vec_unpckhwd(data.out.q[1], data.in1.q[0], data.in2.q[0]);
@@ -4756,10 +4836,13 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
 
     case OP(62,00): /* punpckldq mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_vec_unpckldq);
         break;
-    case OP(14,00): /* unpcklps xmm */
     case OP(62,66): /* punpckldq xmm */
+        ISA_CHECK(sse2);
+    case OP(14,00): /* unpcklps xmm */
+        ISA_CHECK(sse1);
         prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_0, VEC_ARG_0);
         gen_vec_unpckldq(data.out.q[0], data.in1.q[0], data.in2.q[0]);
         gen_vec_unpckhdq(data.out.q[1], data.in1.q[0], data.in2.q[0]);
@@ -4767,44 +4850,56 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
 
     case OP(63,00): /* packsswb mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_packsswb);
         break;
     case OP(63,66): /* packsswb xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary_row(s, &data, gen_helper_vec_packsswb);
         break;
 
     case OP(64,00): /* pcmpgtb mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_cmpgtb);
         break;
     case OP(64,66): /* pcmpgtb xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_cmpgtb);
         break;
 
     case OP(65,00): /* pcmpgtw mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_cmpgtw);
         break;
     case OP(65,66): /* pcmpgtw xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_cmpgtw);
         break;
 
     case OP(66,00): /* pcmpgtd mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_cmpgtd);
         break;
     case OP(66,66): /* pcmpgtd xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_cmpgtd);
         break;
 
     case OP(67,00): /* packuswb mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_packuswb);
         break;
     case OP(67,66): /* packuswb xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary_row(s, &data, gen_helper_vec_packuswb);
         break;
 
     case OP(68,00): /* punpckhbw mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_unpckhbw);
         break;
     case OP(68,66): /* punpckhbw xmm */
+        ISA_CHECK(sse2);
         prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_1, VEC_ARG_1);
         gen_helper_vec_unpcklbw(data.out.q[0], data.in1.q[1], data.in2.q[1]);
         gen_helper_vec_unpckhbw(data.out.q[1], data.in1.q[1], data.in2.q[1]);
@@ -4812,9 +4907,11 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
 
     case OP(69,00): /* punpckhwd mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_unpckhwd);
         break;
     case OP(69,66): /* punpckhwd xmm */
+        ISA_CHECK(sse2);
         prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_1, VEC_ARG_1);
         gen_helper_vec_unpcklwd(data.out.q[0], data.in1.q[1], data.in2.q[1]);
         gen_helper_vec_unpckhwd(data.out.q[1], data.in1.q[1], data.in2.q[1]);
@@ -4822,10 +4919,13 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
 
     case OP(6a,00): /* punpckhdq mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_vec_unpckhdq);
         break;
-    case OP(15,00): /* unpckhps xmm */
     case OP(6a,66): /* punpckhdq xmm */
+        ISA_CHECK(sse2);
+    case OP(15,00): /* unpckhps xmm */
+        ISA_CHECK(sse1);
         prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_1, VEC_ARG_1);
         gen_vec_unpckldq(data.out.q[0], data.in1.q[1], data.in2.q[1]);
         gen_vec_unpckhdq(data.out.q[1], data.in1.q[1], data.in2.q[1]);
@@ -4833,14 +4933,17 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
 
     case OP(6b,00): /* packssdw mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_packssdw);
         break;
     case OP(6b,66): /* packssdw xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary_row(s, &data, gen_helper_vec_packssdw);
         break;
 
     case OP(14,66): /* unpcklpd xmm */
     case OP(6c,66): /* punpcklqdq xmm */
+        ISA_CHECK(sse2);
         prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_0, VEC_ARG_0);
         tcg_gen_mov_i64(data.out.q[0], data.in1.q[0]);
         tcg_gen_mov_i64(data.out.q[1], data.in2.q[0]);
@@ -4849,6 +4952,7 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
 
     case OP(15,66): /* unpckhpd xmm */
     case OP(6d,66): /* punpckhqdq xmm */
+        ISA_CHECK(sse2);
         prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_1, VEC_ARG_1);
         tcg_gen_mov_i64(data.out.q[0], data.in1.q[1]);
         tcg_gen_mov_i64(data.out.q[1], data.in2.q[1]);
@@ -4856,6 +4960,7 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
 
     case OP(70,00): /* pshufw mm */
+        ISA_CHECK(mmx);
         s->rip_offset = 1;
         prep_mmx_unary(s, &data);
         tcg_gen_movi_i32(cpu_tmp2_i32, insn_get_ub(s));
@@ -4863,6 +4968,7 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         finish_mmx(s, &data);
         break;
     case OP(70,66): /* pshufd xmm */
+        ISA_CHECK(sse2);
         s->rip_offset = 1;
         prep_xmm_unary(s, &data, VEC_ARG_N, VEC_ARG_N);
         sel = insn_get_ub(s);
@@ -4871,6 +4977,7 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         finish_xmm(s, &data);
         break;
     case OP(70,F2): /* pshuflw xmm */
+        ISA_CHECK(sse2);
         s->rip_offset = 1;
         prep_xmm_unary(s, &data, VEC_ARG_N, VEC_ARG_N);
         tcg_gen_movi_i32(cpu_tmp2_i32, insn_get_ub(s));
@@ -4879,6 +4986,7 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         finish_xmm(s, &data);
         break;
     case OP(70,F3): /* pshufhw xmm */
+        ISA_CHECK(sse2);
         s->rip_offset = 1;
         prep_xmm_unary(s, &data, VEC_ARG_N, VEC_ARG_N);
         tcg_gen_movi_i32(cpu_tmp2_i32, insn_get_ub(s));
@@ -4888,30 +4996,37 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
 
     case OP(74,00): /* pcmpeqb mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_cmpeqb);
         break;
     case OP(74,66): /* pcmpeqb xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_cmpeqb);
         break;
 
     case OP(75,00): /* pcmpeqw mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_cmpeqw);
         break;
     case OP(75,66): /* pcmpeqw xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_cmpeqw);
         break;
 
     case OP(76,00): /* pcmpeqd mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_cmpeqd);
         break;
     case OP(76,66): /* pcmpeqd xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_cmpeqd);
         break;
 
-    case OP(78,66): /* extrq imm (amd sse4a) */
+    case OP(78,66): /* extrq imm */
         {
             int len, pos;
 
+            ISA_CHECK(sse4a);
             data.in2f = 0;
             ld_xmm_src1(s, &data, VEC_ARG_0);
             prep_output(&data, VEC_ARG_0);
@@ -4927,10 +5042,11 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
             finish_xmm(s, &data);
         }
         break;
-    case OP(78,F2): /* insertq imm (amd sse4a) */
+    case OP(78,F2): /* insertq imm */
         {
             int len, pos;
 
+            ISA_CHECK(sse4a);
             /* ??? No m128 allowed.  */
             prep_xmm_binary(s, &data, VEC_ARG_0, VEC_ARG_0, VEC_ARG_0);
 
@@ -4949,13 +5065,15 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         }
         break;
 
-    case OP(79,66): /* extrq xmm (amd sse4a) */
+    case OP(79,66): /* extrq xmm */
+        ISA_CHECK(sse4a);
         /* ??? No m128 allowed.  */
         prep_xmm_binary(s, &data, VEC_ARG_0, VEC_ARG_0, VEC_ARG_0);
         gen_helper_extrq_r(data.out.q[0], data.in1.q[0], data.in2.q[0]);
         finish_xmm(s, &data);
         break;
-    case OP(79,F2): /* insertq xmm (amd sse4a) */
+    case OP(79,F2): /* insertq xmm */
+        ISA_CHECK(sse4a);
         /* ??? No m128 allowed.  */
         prep_xmm_binary(s, &data, VEC_ARG_0, VEC_ARG_0, VEC_ARG_N);
         gen_helper_insertq_r(data.out.q[0], data.in1.q[0],
@@ -4964,21 +5082,27 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
 
     case OP(7c,66): /* haddpd */
+        ISA_CHECK(sse3);
         do_xmm_binary_row_env(s, &data, gen_helper_d_add);
         break;
     case OP(7c,F2): /* haddps */
+        ISA_CHECK(sse3);
         do_xmm_binary_row_env(s, &data, gen_helper_ps_hadd);
         break;
 
     case OP(7d,66): /* hsubpd */
+        ISA_CHECK(sse3);
         do_xmm_binary_row_env(s, &data, gen_helper_d_sub);
         break;
     case OP(7d,F2): /* hsubps */
+        ISA_CHECK(sse3);
         do_xmm_binary_row_env(s, &data, gen_helper_ps_hsub);
         break;
 
-    case OP(c2,00): /* cmpps */
     case OP(c2,66): /* cmppd */
+        ISA_CHECK(sse2);
+    case OP(c2,00): /* cmpps */
+        ISA_CHECK(sse1);
         {
             static const func_binary_env cmp_table[8][2] = {
                 { gen_helper_ps_cmpeq, gen_helper_d_cmpeq },
@@ -5006,6 +5130,7 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
 
     case OP(c6,00): /* shufps xmm */
+        ISA_CHECK(sse1);
         s->rip_offset = 1;
         prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_N, VEC_ARG_N);
         sel = insn_get_ub(s);
@@ -5014,6 +5139,7 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         finish_xmm(s, &data);
         break;
     case OP(c6,66): /* shufpd xmm */
+        ISA_CHECK(sse2);
         s->rip_offset = 1;
         prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_N, VEC_ARG_N);
         sel = insn_get_ub(s);
@@ -5023,153 +5149,196 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
 
     case OP(d0,66): /* addsubpd */
+        ISA_CHECK(sse3);
         prep_xmm_binary(s, &data, VEC_ARG_N, VEC_ARG_N, VEC_ARG_N);
         gen_helper_d_sub(data.out.q[0], cpu_env, data.in1.q[0], data.in2.q[0]);
         gen_helper_d_add(data.out.q[1], cpu_env, data.in1.q[1], data.in2.q[1]);
         finish_xmm(s, &data);
         break;
     case OP(d0,F2): /* addsubps */
+        ISA_CHECK(sse3);
         do_xmm_binary_env(s, &data, gen_helper_ps_addsub);
         break;
 
     case OP(d1,00): /* psrlw mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_srlw);
         break;
     case OP(d1,66): /* psrlw xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary_scalar(s, &data, gen_helper_vec_srlw);
         break;
 
     case OP(d2,00): /* psrld mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_srld);
         break;
     case OP(d2,66): /* psrld xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary_scalar(s, &data, gen_helper_vec_srld);
         break;
 
     case OP(d3,00): /* psrlq mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_srlq);
         break;
     case OP(d3,66): /* psrlq xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary_scalar(s, &data, gen_helper_vec_srlq);
         break;
 
     case OP(d4,00): /* paddq mm */
+        ISA_CHECK(sse2);
         do_mmx_binary(s, &data, tcg_gen_add_i64);
         break;
     case OP(d4,66): /* paddq xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, tcg_gen_add_i64);
         break;
 
     case OP(d5,00): /* pmullw mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_mullw);
         break;
     case OP(d5,66): /* pmullw xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_mullw);
         break;
 
     case OP(d8,00): /* psubusb mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_subusb);
         break;
     case OP(d8,66): /* psubusb xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_subusb);
         break;
 
     case OP(d9,00): /* psubusw mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_subusw);
         break;
     case OP(d9,66): /* psubusw xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_subusw);
         break;
 
     case OP(da,00): /* pminub mm */
+        ISA_CHECK(sse1);
         do_mmx_binary(s, &data, gen_helper_vec_minub);
         break;
     case OP(da,66): /* pminub xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_minub);
         break;
 
     case OP(db,00): /* pand mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, tcg_gen_and_i64);
         break;
-    case OP(54,00): /* andps xmm */
     case OP(54,66): /* andpd xmm */
     case OP(db,66): /* pand xmm */
+        ISA_CHECK(sse2);
+    case OP(54,00): /* andps xmm */
+        ISA_CHECK(sse1);
         do_xmm_binary(s, &data, tcg_gen_and_i64);
         break;
 
     case OP(dc,00): /* paddusb mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_addusb);
         break;
     case OP(dc,66): /* paddusb xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_addusb);
         break;
 
     case OP(dd,00): /* paddusw mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_addusw);
         break;
     case OP(dd,66): /* paddusw xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_addusw);
         break;
 
     case OP(de,00): /* pmaxub mm */
+        ISA_CHECK(sse1);
         do_mmx_binary(s, &data, gen_helper_vec_maxub);
         break;
     case OP(de,66): /* pmaxub xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_maxub);
         break;
 
     case OP(df,00): /* pandn mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_andn_i64);
         break;
-    case OP(55,00): /* andnps xmm */
     case OP(55,66): /* andnpd xmm */
     case OP(df,66): /* pandn xmm */
+        ISA_CHECK(sse2);
+    case OP(55,00): /* andnps xmm */
+        ISA_CHECK(sse1);
         do_xmm_binary(s, &data, gen_andn_i64);
         break;
 
     case OP(e0,00): /* pavgb mm */
+        ISA_CHECK(sse1);
         do_mmx_binary(s, &data, gen_helper_vec_avgb);
         break;
     case OP(e0,66): /* pavgb xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_avgb);
         break;
 
     case OP(e1,00): /* psraw mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_sraw);
         break;
     case OP(e1,66): /* psraw xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary_scalar(s, &data, gen_helper_vec_sraw);
         break;
 
     case OP(e2,00): /* psrad mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_srad);
         break;
     case OP(e2,66): /* psrad xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary_scalar(s, &data, gen_helper_vec_srad);
         break;
 
     case OP(e3,00): /* pavgw mm */
+        ISA_CHECK(sse1);
         do_mmx_binary(s, &data, gen_helper_vec_avgw);
         break;
     case OP(e3,66): /* pavgw xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_avgw);
         break;
 
     case OP(e4,00): /* pmulhuw mm */
+        ISA_CHECK(sse1);
         do_mmx_binary(s, &data, gen_helper_vec_mulhuw);
         break;
     case OP(e4,66): /* pmulhuw xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_mulhuw);
         break;
 
     case OP(e5,00): /* pmulhw mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_mulhw);
         break;
     case OP(e5,66): /* pmulhw xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_mulhw);
         break;
 
     case OP(e6,66): /* cvttpd2dq */
+        ISA_CHECK(sse2);
         prep_xmm_unary(s, &data, VEC_ARG_N, VEC_ARG_N);
         gen_helper_cvttd2i(cpu_tmp2_i32, cpu_env, data.in2.q[0]);
         gen_helper_cvttd2i(cpu_tmp3_i32, cpu_env, data.in2.q[1]);
@@ -5178,6 +5347,7 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         finish_xmm(s, &data);
         break;
     case OP(e6,F2): /* cvtdq2pd */
+        ISA_CHECK(sse2);
         prep_xmm_unary(s, &data, VEC_ARG_N, VEC_ARG_0);
         tcg_gen_extr_i64_i32(cpu_tmp2_i32, cpu_tmp3_i32, data.in2.q[0]);
         gen_helper_cvti2d(data.out.q[0], cpu_env, cpu_tmp2_i32);
@@ -5185,6 +5355,7 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         finish_xmm(s, &data);
         break;
     case OP(e6,F3): /* cvtpd2dq */
+        ISA_CHECK(sse2);
         prep_xmm_unary(s, &data, VEC_ARG_N, VEC_ARG_N);
         gen_helper_cvtd2i(cpu_tmp2_i32, cpu_env, data.in2.q[0]);
         gen_helper_cvtd2i(cpu_tmp3_i32, cpu_env, data.in2.q[1]);
@@ -5194,108 +5365,139 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
 
     case OP(e8,00): /* psubsb mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_subsb);
         break;
     case OP(e8,66): /* psubsb xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_subsb);
         break;
 
     case OP(e9,00): /* psubsw mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_subsw);
         break;
     case OP(e9,66): /* psubsw xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_subsw);
         break;
 
     case OP(ea,00): /* pminsw mm */
+        ISA_CHECK(sse1);
         do_mmx_binary(s, &data, gen_helper_vec_minsw);
         break;
     case OP(ea,66): /* pminsw xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_minsw);
         break;
 
     case OP(eb,00): /* por mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, tcg_gen_or_i64);
         break;
-    case OP(56,00): /* orps xmm */
     case OP(56,66): /* orpd xmm */
     case OP(eb,66): /* por xmm */
+        ISA_CHECK(sse2);
+    case OP(56,00): /* orps xmm */
+        ISA_CHECK(sse1);
         do_xmm_binary(s, &data, tcg_gen_or_i64);
         break;
 
     case OP(ec,00): /* paddsb mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_addsb);
         break;
     case OP(ec,66): /* paddsb xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_addsb);
         break;
 
     case OP(ed,00): /* paddsw mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_addsw);
         break;
     case OP(ed,66): /* paddsw xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_addsw);
         break;
 
     case OP(ee,00): /* pmaxsw mm */
+        ISA_CHECK(sse1);
         do_mmx_binary(s, &data, gen_helper_vec_maxsw);
         break;
     case OP(ee,66): /* pmaxsw xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_maxsw);
         break;
 
     case OP(ef,00): /* pxor mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, tcg_gen_xor_i64);
         break;
-    case OP(57,00): /* xorps xmm */
     case OP(57,66): /* xorpd xmm */
     case OP(ef,66): /* pxor xmm */
+        ISA_CHECK(sse2);
+    case OP(57,00): /* xorps xmm */
+        ISA_CHECK(sse1);
         do_xmm_binary(s, &data, tcg_gen_xor_i64);
         break;
 
     case OP(f1,00): /* psllw mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_sllw);
         break;
     case OP(f1,66): /* psllw xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary_scalar(s, &data, gen_helper_vec_sllw);
         break;
 
     case OP(f2,00): /* pslld mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_slld);
         break;
     case OP(f2,66): /* pslld xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary_scalar(s, &data, gen_helper_vec_slld);
         break;
 
     case OP(f3,00): /* psllq mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_sllq);
         break;
     case OP(f3,66): /* psllq xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary_scalar(s, &data, gen_helper_vec_sllq);
         break;
 
     case OP(f4,00): /* pmuludq mm */
+        ISA_CHECK(sse2);
         do_mmx_binary(s, &data, gen_vec_muludq);
         break;
     case OP(f4,66): /* pmuludq xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_vec_muludq);
         break;
 
     case OP(f5,00): /* pmaddwd mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_maddwd);
         break;
     case OP(f5,66): /* pmaddwd xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_maddwd);
         break;
 
     case OP(f6,00): /* psadbw mm */
+        ISA_CHECK(sse1);
         do_mmx_binary(s, &data, gen_helper_vec_sadbw);
         break;
     case OP(f6,66): /* psadbw xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_sadbw);
         break;
 
     case OP(f7,00): /* maskmovq */
+        ISA_CHECK(mmx);
         /* ??? No mem allowed.  */
         prep_mmx_binary(s, &data, 0);
         gen_lea_v_seg(s, s->aflag, cpu_regs[R_EDI], R_DS, s->override);
@@ -5303,6 +5505,7 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         free_vecdata(&data);
         break;
     case OP(f7,66): /* maskmovdq */
+        ISA_CHECK(sse2);
         /* ??? No mem allowed.  */
         prep_xmm_binary(s, &data, 0, VEC_ARG_N, VEC_ARG_N);
         gen_lea_v_seg(s, s->aflag, cpu_regs[R_EDI], R_DS, s->override);
@@ -5313,51 +5516,65 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
 
     case OP(f8,00): /* psubb mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_subb);
         break;
     case OP(f8,66): /* psubb xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_subb);
         break;
 
     case OP(f9,00): /* psubw mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_subw);
         break;
     case OP(f9,66): /* psubw xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_subw);
         break;
 
     case OP(fa,00): /* psubd mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_subd);
         break;
     case OP(fa,66): /* psubd xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_subd);
         break;
 
     case OP(fb,00): /* psubq mm */
+        ISA_CHECK(sse2);
         do_mmx_binary(s, &data, tcg_gen_sub_i64);
         break;
     case OP(fb,66): /* psubq xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, tcg_gen_sub_i64);
         break;
 
     case OP(fc,00): /* paddb mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_addb);
         break;
     case OP(fc,66): /* paddb xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_addb);
         break;
 
     case OP(fd,00): /* paddw mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_addw);
         break;
     case OP(fd,66): /* paddw xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_addw);
         break;
 
     case OP(fe,00): /* paddd mm */
+        ISA_CHECK(mmx);
         do_mmx_binary(s, &data, gen_helper_vec_addd);
         break;
     case OP(fe,66): /* paddd xmm */
+        ISA_CHECK(sse2);
         do_xmm_binary(s, &data, gen_helper_vec_addd);
         break;
 
