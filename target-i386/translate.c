@@ -2653,143 +2653,8 @@ typedef void (*SSEFunc_0_eppt)(TCGv_ptr env, TCGv_ptr reg_a, TCGv_ptr reg_b,
                                TCGv val);
 
 #define SSE_SPECIAL ((void *)1)
-#define SSE_DUMMY ((void *)2)
 
 #define MMX_OP2(x) { gen_helper_ ## x ## _mmx, gen_helper_ ## x ## _xmm }
-#define SSE_FOP(x) { gen_helper_ ## x ## ps, gen_helper_ ## x ## pd, \
-                     gen_helper_ ## x ## ss, gen_helper_ ## x ## sd, }
-
-static const SSEFunc_0_epp sse_op_table1[256][4] = {
-    /* 3DNow! extensions */
-    [0x0e] = { SSE_DUMMY }, /* femms */
-    [0x0f] = { SSE_DUMMY }, /* pf... */
-    /* pure SSE operations */
-    [0x10] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* movups, movupd, movss, movsd */
-    [0x11] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* movups, movupd, movss, movsd */
-    [0x12] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* movlps, movlpd, movsldup, movddup */
-    [0x13] = { SSE_SPECIAL, SSE_SPECIAL },  /* movlps, movlpd */
-    [0x14] = { SSE_SPECIAL, SSE_SPECIAL },  /* unpcklps, unpcklpd */
-    [0x15] = { SSE_SPECIAL, SSE_SPECIAL },  /* unpckhps, unpckhpd */
-    [0x16] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL },  /* movhps, movhpd, movshdup */
-    [0x17] = { SSE_SPECIAL, SSE_SPECIAL },  /* movhps, movhpd */
-
-    [0x28] = { SSE_SPECIAL, SSE_SPECIAL },  /* movaps, movapd */
-    [0x29] = { SSE_SPECIAL, SSE_SPECIAL },  /* movaps, movapd */
-    [0x2a] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* cvtpi2ps, cvtpi2pd, cvtsi2ss, cvtsi2sd */
-    [0x2b] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* movntps, movntpd, movntss, movntsd */
-    [0x2c] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* cvttps2pi, cvttpd2pi, cvttsd2si, cvttss2si */
-    [0x2d] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* cvtps2pi, cvtpd2pi, cvtsd2si, cvtss2si */
-    [0x2e] = { SSE_SPECIAL, SSE_SPECIAL }, /* ucomiss, ucomisd */
-    [0x2f] = { SSE_SPECIAL, SSE_SPECIAL }, /* comiss, comisd */
-    [0x50] = { SSE_SPECIAL, SSE_SPECIAL }, /* movmskps, movmskpd */
-    [0x51] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(sqrt) */
-    [0x52] = { SSE_SPECIAL, NULL, SSE_SPECIAL }, /* rsqrtps, rsqrtss */
-    [0x53] = { SSE_SPECIAL, NULL, SSE_SPECIAL }, /* rcpps, rcpss */
-    [0x54] = { SSE_SPECIAL, SSE_SPECIAL }, /* andps, andpd */
-    [0x55] = { SSE_SPECIAL, SSE_SPECIAL }, /* andnps, andnpd */
-    [0x56] = { SSE_SPECIAL, SSE_SPECIAL }, /* orps, orpd */
-    [0x57] = { SSE_SPECIAL, SSE_SPECIAL }, /* xorps, xorpd */
-    [0x58] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(add) */
-    [0x59] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(mul) */
-    [0x5a] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL },
-             /* cvtps2pd, cvtpd2ps, cvtss2sd, cvtsd2ss */
-    [0x5b] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL },
-             /* cvtdq2ps, cvtps2dq, cvttps2dq */
-    [0x5c] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(sub) */
-    [0x5d] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(min) */
-    [0x5e] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(div) */
-    [0x5f] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(max) */
-
-    [0xc2] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* SSE_FOP(cmpeq) */
-    [0xc6] = { SSE_SPECIAL, SSE_SPECIAL }, /* shufps, shufpd */
-
-    /* SSSE3, SSE4, MOVBE, CRC32, BMI1, BMI2, ADX.  */
-    [0x38] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL },
-    [0x3a] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL },
-
-    /* MMX ops and their SSE extensions */
-    [0x60] = { SSE_SPECIAL, SSE_SPECIAL }, /* punpcklbw */
-    [0x61] = { SSE_SPECIAL, SSE_SPECIAL }, /* punpcklwd */
-    [0x62] = { SSE_SPECIAL, SSE_SPECIAL }, /* punpckldq */
-    [0x63] = { SSE_SPECIAL, SSE_SPECIAL }, /* packsswb */
-    [0x64] = { SSE_SPECIAL, SSE_SPECIAL }, /* pcmpgtb */
-    [0x65] = { SSE_SPECIAL, SSE_SPECIAL }, /* pcmpgtw */
-    [0x66] = { SSE_SPECIAL, SSE_SPECIAL }, /* pcmpgtd */
-    [0x67] = { SSE_SPECIAL, SSE_SPECIAL }, /* packuswb */
-    [0x68] = { SSE_SPECIAL, SSE_SPECIAL }, /* punpckhbw */
-    [0x69] = { SSE_SPECIAL, SSE_SPECIAL }, /* punpckhwd */
-    [0x6a] = { SSE_SPECIAL, SSE_SPECIAL }, /* punpckhdq */
-    [0x6b] = { SSE_SPECIAL, SSE_SPECIAL }, /* packssdw */
-    [0x6c] = { NULL, SSE_SPECIAL }, /* punpcklqdq */
-    [0x6d] = { NULL, SSE_SPECIAL }, /* punpckhqdq */
-    [0x6e] = { SSE_SPECIAL, SSE_SPECIAL }, /* movd mm, ea */
-    [0x6f] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* movq, movdqa, , movqdu */
-    [0x70] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL },
-             /* pshufw, pshufd, pshufhw, pshuflw */
-    [0x71] = { SSE_SPECIAL, SSE_SPECIAL }, /* shiftw */
-    [0x72] = { SSE_SPECIAL, SSE_SPECIAL }, /* shiftd */
-    [0x73] = { SSE_SPECIAL, SSE_SPECIAL }, /* shiftq */
-    [0x74] = { SSE_SPECIAL, SSE_SPECIAL }, /* pcmpeqb */
-    [0x75] = { SSE_SPECIAL, SSE_SPECIAL }, /* pcmpeqw */
-    [0x76] = { SSE_SPECIAL, SSE_SPECIAL }, /* pcmpeqd */
-    [0x77] = { SSE_DUMMY }, /* emms */
-    [0x78] = { NULL, SSE_SPECIAL, NULL, SSE_SPECIAL }, /* extrq_i, insertq_i */
-    [0x79] = { NULL, SSE_SPECIAL, NULL, SSE_SPECIAL }, /* extrq_r, insertq_r */
-    [0x7c] = { NULL, SSE_SPECIAL, NULL, SSE_SPECIAL }, /* haddpd, haddps */
-    [0x7d] = { NULL, SSE_SPECIAL, NULL, SSE_SPECIAL }, /* hsubpd, hsubps */
-    [0x7e] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* movd, movd, , movq */
-    [0x7f] = { SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL }, /* movq, movdqa, movdqu */
-    [0xc4] = { SSE_SPECIAL, SSE_SPECIAL }, /* pinsrw */
-    [0xc5] = { SSE_SPECIAL, SSE_SPECIAL }, /* pextrw */
-    [0xd0] = { NULL, SSE_SPECIAL, NULL, SSE_SPECIAL }, /* addsubpd, addsubps */
-    [0xd1] = { SSE_SPECIAL, SSE_SPECIAL }, /* psrlw */
-    [0xd2] = { SSE_SPECIAL, SSE_SPECIAL }, /* psrld */
-    [0xd3] = { SSE_SPECIAL, SSE_SPECIAL }, /* psrlq */
-    [0xd4] = { SSE_SPECIAL, SSE_SPECIAL }, /* paddq */
-    [0xd5] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmullw */
-    [0xd6] = { NULL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL },
-    [0xd7] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmovmskb */
-    [0xd8] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubusb */
-    [0xd9] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubusw */
-    [0xda] = { SSE_SPECIAL, SSE_SPECIAL }, /* pminub */
-    [0xdb] = { SSE_SPECIAL, SSE_SPECIAL }, /* pand */
-    [0xdc] = { SSE_SPECIAL, SSE_SPECIAL }, /* paddusb */
-    [0xdd] = { SSE_SPECIAL, SSE_SPECIAL }, /* paddusw */
-    [0xde] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmaxub */
-    [0xdf] = { SSE_SPECIAL, SSE_SPECIAL }, /* pandn */
-    [0xe0] = { SSE_SPECIAL, SSE_SPECIAL }, /* pavgb */
-    [0xe1] = { SSE_SPECIAL, SSE_SPECIAL }, /* psraw */
-    [0xe2] = { SSE_SPECIAL, SSE_SPECIAL }, /* psrad */
-    [0xe3] = { SSE_SPECIAL, SSE_SPECIAL }, /* pavgw */
-    [0xe4] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmulhuw */
-    [0xe5] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmulhw */
-    [0xe6] = { NULL, SSE_SPECIAL, SSE_SPECIAL, SSE_SPECIAL },
-             /* cvttpd2dq, cvtdq2pd, cvtpd2dq */
-    [0xe7] = { SSE_SPECIAL, SSE_SPECIAL }, /* movntq, movntq */
-    [0xe8] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubsb */
-    [0xe9] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubsw */
-    [0xea] = { SSE_SPECIAL, SSE_SPECIAL }, /* pminsw */
-    [0xeb] = { SSE_SPECIAL, SSE_SPECIAL }, /* por */
-    [0xec] = { SSE_SPECIAL, SSE_SPECIAL }, /* paddsb */
-    [0xed] = { SSE_SPECIAL, SSE_SPECIAL }, /* paddsw */
-    [0xee] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmaxsw */
-    [0xef] = { SSE_SPECIAL, SSE_SPECIAL }, /* pxor */
-    [0xf0] = { NULL, NULL, NULL, SSE_SPECIAL }, /* lddqu */
-    [0xf1] = { SSE_SPECIAL, SSE_SPECIAL }, /* psllw */
-    [0xf2] = { SSE_SPECIAL, SSE_SPECIAL }, /* pslld */
-    [0xf3] = { SSE_SPECIAL, SSE_SPECIAL }, /* psllq */
-    [0xf4] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmuludq */
-    [0xf5] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmaddwd */
-    [0xf6] = { SSE_SPECIAL, SSE_SPECIAL }, /* psadbw */
-    [0xf7] = { SSE_SPECIAL, SSE_SPECIAL }, /* maskmov */
-    [0xf8] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubb */
-    [0xf9] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubw */
-    [0xfa] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubd */
-    [0xfb] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubq */
-    [0xfc] = { SSE_SPECIAL, SSE_SPECIAL }, /* paddb */
-    [0xfd] = { SSE_SPECIAL, SSE_SPECIAL }, /* paddw */
-    [0xfe] = { SSE_SPECIAL, SSE_SPECIAL }, /* paddd */
-};
 
 static const SSEFunc_0_epp sse_op_table2[3 * 8][2] = {
     [16 + 3] = { NULL, gen_helper_psrldq_xmm },
@@ -3443,10 +3308,6 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
     } else {
         b1 = 0;
     }
-    sse_fn_epp = sse_op_table1[b][b1];
-    if (!sse_fn_epp) {
-        goto unknown_op;
-    }
     if ((b <= 0x5f && b >= 0x10) || b == 0xc6 || b == 0xc2) {
         is_xmm = 1;
     } else {
@@ -3496,7 +3357,7 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         reg |= REX_R(s);
     }
     mod = (modrm >> 6) & 3;
-    if (sse_fn_epp == SSE_SPECIAL) {
+    {
         b |= (b1 << 8);
         switch(b) {
         case 0x0e7: /* movntq */
@@ -4701,85 +4562,6 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
             }
             break;
         }
-    } else {
-        /* generic MMX or SSE operation */
-        if (is_xmm) {
-            op1_offset = offsetof(CPUX86State,xmm_regs[reg]);
-            if (mod != 3) {
-                int sz = 4;
-
-                gen_lea_modrm(s, modrm);
-                op2_offset = offsetof(CPUX86State,xmm_t0);
-
-                switch (b) {
-                case 0x50 ... 0x5a:
-                case 0x5c ... 0x5f:
-                    /* Most sse scalar operations.  */
-                    if (b1 == 2) {
-                        sz = 2;
-                    } else if (b1 == 3) {
-                        sz = 3;
-                    }
-                    break;
-                }
-
-                switch (sz) {
-                case 2:
-                    /* 32 bit access */
-                    gen_op_ld_v(s, MO_32, cpu_T0, cpu_A0);
-                    tcg_gen_st32_tl(cpu_T0, cpu_env,
-                                    offsetof(CPUX86State,xmm_t0.ZMM_L(0)));
-                    break;
-                case 3:
-                    /* 64 bit access */
-                    gen_ldq_env_A0(s, offsetof(CPUX86State, xmm_t0.ZMM_D(0)));
-                    break;
-                default:
-                    /* 128 bit access */
-                    gen_ldo_env_A0(s, op2_offset);
-                    break;
-                }
-            } else {
-                rm = (modrm & 7) | REX_B(s);
-                op2_offset = offsetof(CPUX86State,xmm_regs[rm]);
-            }
-        } else {
-            op1_offset = offsetof(CPUX86State,fpregs[reg].mmx);
-            if (mod != 3) {
-                gen_lea_modrm(s, modrm);
-                op2_offset = offsetof(CPUX86State,mmx_t0);
-                gen_ldq_env_A0(s, op2_offset);
-            } else {
-                rm = (modrm & 7);
-                op2_offset = offsetof(CPUX86State,fpregs[rm].mmx);
-            }
-        }
-        switch(b) {
-        case 0x0f: /* 3DNow! data insns */
-            if (!(s->cpuid_ext2_features & CPUID_EXT2_3DNOW))
-                goto illegal_op;
-            val = insn_get_ub(s);
-            sse_fn_epp = sse_op_table5[val];
-            if (!sse_fn_epp) {
-                goto unknown_op;
-            }
-            if (!(s->cpuid_ext2_features & CPUID_EXT2_3DNOW)) {
-                goto illegal_op;
-            }
-            tcg_gen_addi_ptr(cpu_ptr0, cpu_env, op1_offset);
-            tcg_gen_addi_ptr(cpu_ptr1, cpu_env, op2_offset);
-            sse_fn_epp(cpu_env, cpu_ptr0, cpu_ptr1);
-            break;
-        default:
-            tcg_gen_addi_ptr(cpu_ptr0, cpu_env, op1_offset);
-            tcg_gen_addi_ptr(cpu_ptr1, cpu_env, op2_offset);
-            sse_fn_epp(cpu_env, cpu_ptr0, cpu_ptr1);
-            break;
-        }
-        if (b == 0x2e || b == 0x2f) {
-            set_cc_op(s, CC_OP_EFLAGS);
-        }
-        return;
     }
 
     /* Converted MMX+SSE instructions.  */
