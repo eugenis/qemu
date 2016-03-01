@@ -57,7 +57,6 @@ SSE_HELPER_W(pmulhrw, FMULHRW)
 
 SSE_HELPER_B(pavgb, FAVG)
 
-DEF_HELPER_4(glue(maskmov, SUFFIX), void, env, Reg, Reg, tl)
 DEF_HELPER_2(glue(movl_mm_T0, SUFFIX), void, Reg, i32)
 #ifdef TARGET_X86_64
 DEF_HELPER_2(glue(movq_mm_T0, SUFFIX), void, Reg, i64)

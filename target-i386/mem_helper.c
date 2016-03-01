@@ -133,6 +133,19 @@ void helper_boundl(CPUX86State *env, target_ulong a0, int v)
     }
 }
 
+void helper_maskmov(CPUX86State *env, target_ulong a0,
+                    uint64_t data, uint64_t mask)
+{
+    uintptr_t pc = GETPC();
+    int i;
+
+    for (i = 0; i < 8; ++i, mask >>= 8, data >>= 8) {
+        if (mask & 0x80) {
+            cpu_stb_data_ra(env, a0 + i, data & 0xff, pc);
+        }
+    }
+}
+
 #if !defined(CONFIG_USER_ONLY)
 /* try to fill the TLB and return an exception if error. If retaddr is
  * NULL, it means that the function was called in C code (i.e. not

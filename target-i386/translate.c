@@ -2781,8 +2781,7 @@ static const SSEFunc_0_epp sse_op_table1[256][4] = {
     [0xf4] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmuludq */
     [0xf5] = { SSE_SPECIAL, SSE_SPECIAL }, /* pmaddwd */
     [0xf6] = { SSE_SPECIAL, SSE_SPECIAL }, /* psadbw */
-    [0xf7] = { (SSEFunc_0_epp)gen_helper_maskmov_mmx,
-               (SSEFunc_0_epp)gen_helper_maskmov_xmm }, /* XXX: casts */
+    [0xf7] = { SSE_SPECIAL, SSE_SPECIAL }, /* maskmov */
     [0xf8] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubb */
     [0xf9] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubw */
     [0xfa] = { SSE_SPECIAL, SSE_SPECIAL }, /* psubd */
@@ -3074,11 +3073,11 @@ static void prep_mmx_unary(DisasContext *s, VecData *data)
     prep_output(data, VEC_ARG_0);
 }
 
-static void prep_mmx_binary(DisasContext *s, VecData *data)
+static void prep_mmx_binary(DisasContext *s, VecData *data, int outf)
 {
     ld_mmx_src2(s, data);
     ld_mmx_src1(s, data);
-    prep_output(data, VEC_ARG_0);
+    prep_output(data, outf);
 }
 
 static void st_xmm_dest(DisasContext *s, VecData *data)
@@ -3251,7 +3250,7 @@ static void do_xmm_unary_sd(DisasContext *s, VecData *data, func_unary_env func)
 
 static void do_mmx_binary(DisasContext *s, VecData *data, func_binary func)
 {
-    prep_mmx_binary(s, data);
+    prep_mmx_binary(s, data, VEC_ARG_0);
     func(data->out.q[0], data->in1.q[0], data->in2.q[0]);
     finish_mmx(s, data);
 }
@@ -3432,7 +3431,6 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
     int modrm, mod, rm, reg, sel;
     SSEFunc_0_epp sse_fn_epp;
     SSEFunc_0_eppi sse_fn_eppi;
-    SSEFunc_0_eppt sse_fn_eppt;
     TCGMemOp ot;
 
     b &= 0xff;
@@ -4772,20 +4770,6 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
             tcg_gen_addi_ptr(cpu_ptr1, cpu_env, op2_offset);
             sse_fn_epp(cpu_env, cpu_ptr0, cpu_ptr1);
             break;
-        case 0xf7:
-            /* maskmov : we must prepare A0 */
-            if (mod != 3)
-                goto illegal_op;
-            tcg_gen_mov_tl(cpu_A0, cpu_regs[R_EDI]);
-            gen_extu(s->aflag, cpu_A0);
-            gen_add_A0_ds_seg(s);
-
-            tcg_gen_addi_ptr(cpu_ptr0, cpu_env, op1_offset);
-            tcg_gen_addi_ptr(cpu_ptr1, cpu_env, op2_offset);
-            /* XXX: introduce a new table? */
-            sse_fn_eppt = (SSEFunc_0_eppt)sse_fn_epp;
-            sse_fn_eppt(cpu_env, cpu_ptr0, cpu_ptr1, cpu_A0);
-            break;
         default:
             tcg_gen_addi_ptr(cpu_ptr0, cpu_env, op1_offset);
             tcg_gen_addi_ptr(cpu_ptr1, cpu_env, op2_offset);
@@ -5527,6 +5511,23 @@ static void gen_sse(DisasContext *s, int b, target_ulong pc_start)
         break;
     case OP(f6,66): /* psadbw xmm */
         do_xmm_binary(s, &data, gen_helper_vec_sadbw);
+        break;
+
+    case OP(f7,00): /* maskmovq */
+        /* ??? No mem allowed.  */
+        prep_mmx_binary(s, &data, 0);
+        gen_lea_v_seg(s, s->aflag, cpu_regs[R_EDI], R_DS, s->override);
+        gen_helper_maskmov(cpu_env, cpu_A0, data.in1.q[0], data.in2.q[0]);
+        free_vecdata(&data);
+        break;
+    case OP(f7,66): /* maskmovdq */
+        /* ??? No mem allowed.  */
+        prep_xmm_binary(s, &data, 0, VEC_ARG_N, VEC_ARG_N);
+        gen_lea_v_seg(s, s->aflag, cpu_regs[R_EDI], R_DS, s->override);
+        gen_helper_maskmov(cpu_env, cpu_A0, data.in1.q[0], data.in2.q[0]);
+        tcg_gen_addi_tl(cpu_A0, cpu_A0, 8);
+        gen_helper_maskmov(cpu_env, cpu_A0, data.in1.q[1], data.in2.q[1]);
+        free_vecdata(&data);
         break;
 
     case OP(f8,00): /* psubb mm */

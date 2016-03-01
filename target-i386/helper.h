@@ -337,3 +337,5 @@ DEF_HELPER_FLAGS_2(cvtdq2ps, TCG_CALL_NO_RWG, i64, env, i64)
 DEF_HELPER_FLAGS_2(cvtps2dq, TCG_CALL_NO_RWG, i64, env, i64)
 DEF_HELPER_FLAGS_2(cvttd2i, TCG_CALL_NO_RWG, s32, env, i64)
 DEF_HELPER_FLAGS_2(cvttps2dq, TCG_CALL_NO_RWG, i64, env, i64)
+
+DEF_HELPER_FLAGS_4(maskmov, TCG_CALL_NO_WG, void, env, tl, i64, i64)

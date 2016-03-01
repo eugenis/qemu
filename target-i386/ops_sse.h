@@ -226,18 +226,6 @@ static inline int abs1(int a)
 }
 #endif
 
-void glue(helper_maskmov, SUFFIX)(CPUX86State *env, Reg *d, Reg *s,
-                                  target_ulong a0)
-{
-    int i;
-
-    for (i = 0; i < (8 << SHIFT); i++) {
-        if (s->B(i) & 0x80) {
-            cpu_stb_data_ra(env, a0 + i, d->B(i), GETPC());
-        }
-    }
-}
-
 void glue(helper_movl_mm_T0, SUFFIX)(Reg *d, uint32_t val)
 {
     d->L(0) = val;
