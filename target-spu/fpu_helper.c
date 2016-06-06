@@ -266,3 +266,169 @@ uint32_t helper_dftsv(uint64_t a, uint32_t mask)
 
     return test ? -1 : 0;
 }
+
+/* Extract using the big-endian bit numbering used by SPU.  */
+static inline uint32_t bextract(uint32_t w, int pos, int len)
+{
+    return extract32(w, 32 - pos - len, len);
+}
+
+/* Insert using the big-endian bit numbering used by SPU.  */
+static inline uint32_t bdeposit(uint32_t w, int pos, int len, int v)
+{
+    return deposit32(w, 32 - pos - len, len, v);
+}
+
+static inline int spu_to_round(int x)
+{
+    switch (x) {
+    default:
+        return float_round_nearest_even;
+    case 1:
+        return float_round_to_zero;
+    case 2:
+        return float_round_up;
+    case 3:
+        return float_round_down;
+    }
+}
+
+static inline int round_to_spu(int x)
+{
+    switch (x) {
+    case float_round_nearest_even:
+        return 0;
+    case float_round_to_zero:
+        return 1;
+    case float_round_up:
+        return 2;
+    case float_round_down:
+        return 3;
+    default:
+        g_assert_not_reached();
+    }
+}
+
+static inline int spspu_to_flag(int x)
+{
+    int r = 0;
+    r |= (x & 4 ? float_flag_overflow : 0);
+    r |= (x & 2 ? float_flag_underflow : 0);
+    /* ??? diff bit */
+    return r;
+}
+
+static inline int flag_to_spspu(int x)
+{
+    int r = 0;
+    r |= (x & float_flag_overflow ? 4 : 0);
+    r |= (x & float_flag_underflow ? 2 : 0);
+    /* ??? diff bit */
+    return r;
+}
+
+static inline int dpspu_to_flag(int x)
+{
+    int r = 0;
+    r |= (x & 32 ? float_flag_overflow : 0);
+    r |= (x & 16 ? float_flag_underflow : 0);
+    r |= (x & 8 ? float_flag_inexact : 0);
+    r |= (x & 4 ? float_flag_invalid : 0);
+    /* ??? qnan diff bit */
+    /* ??? denorm diff bit */
+    return r;
+}
+
+static inline int flag_to_dpspu(int x)
+{
+    int r = 0;
+    r |= (x & float_flag_overflow ? 32 : 0);
+    r |= (x & float_flag_underflow ? 16 : 0);
+    r |= (x & float_flag_inexact ? 8 : 0);
+    r |= (x & float_flag_invalid ? 4 : 0);
+    /* ??? qnan diff bit */
+    /* ??? denorm diff bit */
+    return r;
+}
+
+void helper_fscrwr(CPUSPUState *env, uint32_t a0, uint32_t a1,
+                   uint32_t a2, uint32_t a3)
+{
+    int sf0, sf1, sf2, sf3;
+    int x;
+
+    x = spu_to_round(bextract(a0, 20, 2));
+    set_float_rounding_mode(x, &env->dp_status[0]);
+    x = spu_to_round(bextract(a0, 22, 2));
+    set_float_rounding_mode(x, &env->dp_status[1]);
+    x = dpspu_to_flag(bextract(a1, 50 % 32, 6));
+    set_float_exception_flags(x, &env->dp_status[0]);
+    x = dpspu_to_flag(bextract(a2, 82 % 32, 6));
+    set_float_exception_flags(x, &env->dp_status[1]);
+
+    sf0 = spspu_to_flag(bextract(a0, 29, 3));
+    sf1 = spspu_to_flag(bextract(a1, 61 % 32, 3));
+    sf2 = spspu_to_flag(bextract(a2, 93 % 32, 3));
+    sf3 = spspu_to_flag(bextract(a3, 125 % 32, 3));
+    if (bextract(a3, 116 % 32, 1)) {
+        sf0 |= float_flag_divbyzero;
+    }
+    if (bextract(a3, 117 % 32, 1)) {
+        sf1 |= float_flag_divbyzero;
+    }
+    if (bextract(a3, 118 % 32, 1)) {
+        sf2 |= float_flag_divbyzero;
+    }
+    if (bextract(a3, 119 % 32, 1)) {
+        sf3 |= float_flag_divbyzero;
+    }
+    set_float_exception_flags(sf0, &env->sp_status[0]);
+    set_float_exception_flags(sf1, &env->sp_status[1]);
+    set_float_exception_flags(sf2, &env->sp_status[2]);
+    set_float_exception_flags(sf3, &env->sp_status[3]);
+}
+
+void helper_fscrrd(CPUSPUState *env)
+{
+    uint32_t r0 = 0, r1 = 0, r2 = 0, r3 = 0;
+    int x;
+
+    x = get_float_rounding_mode(&env->dp_status[0]);
+    r0 = bdeposit(r0, 20, 2, round_to_spu(x));
+    x = get_float_rounding_mode(&env->dp_status[1]);
+    r0 = bdeposit(r0, 22, 2, round_to_spu(x));
+
+    x = get_float_exception_flags(&env->dp_status[0]);
+    r1 = bdeposit(r1, 50 % 32, 6, flag_to_dpspu(x));
+    x = get_float_exception_flags(&env->dp_status[1]);
+    r2 = bdeposit(r2, 82 % 32, 6, flag_to_dpspu(x));
+
+    x = get_float_exception_flags(&env->sp_status[0]);
+    r0 = bdeposit(r0, 29, 2, flag_to_spspu(x));
+    if (x & float_flag_divbyzero) {
+        r3 = bdeposit(r3, 116, 1, 1);
+    }
+
+    x = get_float_exception_flags(&env->sp_status[1]);
+    r1 = bdeposit(r1, 61 % 32, 2, flag_to_spspu(x));
+    if (x & float_flag_divbyzero) {
+        r3 = bdeposit(r3, 117, 1, 1);
+    }
+
+    x = get_float_exception_flags(&env->sp_status[2]);
+    r2 = bdeposit(r2, 93 % 32, 2, flag_to_spspu(x));
+    if (x & float_flag_divbyzero) {
+        r3 = bdeposit(r3, 118, 1, 1);
+    }
+
+    x = get_float_exception_flags(&env->sp_status[3]);
+    r3 = bdeposit(r3, 125 % 32, 2, flag_to_spspu(x));
+    if (x & float_flag_divbyzero) {
+        r3 = bdeposit(r3, 119, 1, 1);
+    }
+
+    env->ret[0] = r0;
+    env->ret[1] = r1;
+    env->ret[2] = r2;
+    env->ret[3] = r3;
+}

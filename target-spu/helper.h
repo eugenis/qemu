@@ -73,3 +73,6 @@ DEF_HELPER_FLAGS_2(dfcmeq, TCG_CALL_NO_WG, void, env, i32)
 DEF_HELPER_FLAGS_2(dfcgt, TCG_CALL_NO_WG, void, env, i32)
 DEF_HELPER_FLAGS_2(dfcmgt, TCG_CALL_NO_WG, void, env, i32)
 DEF_HELPER_FLAGS_2(dftsv, TCG_CALL_NO_RWG_SE, i32, i64, i32)
+
+DEF_HELPER_FLAGS_5(fscrwr, TCG_CALL_NO_RWG, void, env, i32, i32, i32, i32)
+DEF_HELPER_FLAGS_1(fscrrd, TCG_CALL_NO_RWG, void, env)

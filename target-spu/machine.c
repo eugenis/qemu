@@ -24,6 +24,8 @@
 #include "hw/hw.h"
 #include "hw/boards.h"
 #include "migration/cpu.h"
+#include "exec/helper-proto.h"
+
 
 static VMStateField vmstate_env_fields[] = {
     VMSTATE_UINTTL_ARRAY(gpr, CPUSPUState, 128*4),
@@ -31,13 +33,29 @@ static VMStateField vmstate_env_fields[] = {
     VMSTATE_UINTTL(srr0, CPUSPUState),
     VMSTATE_UINTTL(inte, CPUSPUState),
     VMSTATE_UINTTL(lslr, CPUSPUState),
+    VMSTATE_UINTTL_ARRAY(ret, CPUSPUState, 4), /* fscr */
     VMSTATE_END_OF_LIST()
 };
+
+static void env_pre_save(void *opaque)
+{
+    CPUSPUState *env = opaque;
+    helper_fscrrd(env);
+}
+
+static int env_post_load(void *opaque, int version_id)
+{
+    CPUSPUState *env = opaque;
+    helper_fscrwr(env, env->ret[0], env->ret[1], env->ret[2], env->ret[3]);
+    return 0;
+}
 
 static const VMStateDescription vmstate_env = {
     .name = "env",
     .version_id = 1,
     .minimum_version_id = 1,
+    .pre_save = env_pre_save,
+    .post_load = env_post_load,
     .fields = vmstate_env_fields,
 };
 

@@ -1955,6 +1955,25 @@ static ExitStatus insn_dftsv(DisassContext *ctx, uint32_t insn)
     return NO_EXIT;
 }
 
+static ExitStatus insn_fscrwr(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RR1;
+
+    gen_helper_fscrwr(cpu_env, cpu_gpr[ra][0], cpu_gpr[ra][1],
+                      cpu_gpr[ra][2], cpu_gpr[ra][3]);
+    return NO_EXIT;
+}
+
+static ExitStatus insn_fscrrd(DisassContext *ctx, uint32_t insn)
+{
+    unsigned rt = extract32(insn, 0, 7);
+    qemu_log_mask(CPU_LOG_TB_IN_ASM, "%8x:\t%s\t$%d\n", ctx->pc, INSN, rt);
+
+    gen_helper_fscrrd(cpu_env);
+    load_return(cpu_gpr[rt]);
+    return NO_EXIT;
+}
+
 /* ---------------------------------------------------------------------- */
 /* Section 10: Control Instructions.  */
 
@@ -2303,8 +2322,8 @@ static InsnDescr const translate_table[0x800] = {
     INSN(0x794, RR, fcmeq),
     INSN(0x584, RR, fcgt),
     INSN(0x594, RR, fcmgt),
-    // INSN(0x774, RR, FSCRWR),
-    // INSN(0x730, RR, FSCRRD),
+    INSN(0x774, RR, fscrwr),
+    INSN(0x730, RR, fscrrd),
 
     INSN(0x000, RR, stop),
     INSN(0x280, RR, stopd),
