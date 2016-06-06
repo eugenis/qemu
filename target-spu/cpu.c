@@ -120,6 +120,25 @@ static void spu_cpu_initfn(Object *obj)
     spu_translate_init();
 }
 
+static void spu_cpu_reset(CPUState *s)
+{
+    SPUCPU *cpu = SPU_CPU(s);
+    SPUCPUClass *scc = SPU_CPU_GET_CLASS(cpu);
+    CPUSPUState *env = &cpu->env;
+    int i;
+
+    scc->parent_reset(s);
+
+    memset(env, 0, offsetof(CPUSPUState, lslr));
+
+    for (i = 0; i < 4; ++i) {
+        float_status *st = &env->sp_status[i];
+        set_float_rounding_mode(float_round_to_zero, st);
+        set_flush_to_zero(true, st);
+        set_flush_inputs_to_zero(true, st);
+    }
+}
+
 static void spu_cpu_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
@@ -128,6 +147,9 @@ static void spu_cpu_class_init(ObjectClass *oc, void *data)
 
     scc->parent_realize = dc->realize;
     dc->realize = spu_cpu_realizefn;
+
+    scc->parent_reset = cc->reset;
+    cc->reset = spu_cpu_reset;
 
     cc->class_by_name = spu_cpu_class_by_name;
     cc->do_interrupt = spu_cpu_do_interrupt;
