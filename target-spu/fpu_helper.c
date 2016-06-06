@@ -194,3 +194,75 @@ void helper_fesd(CPUSPUState *env, uint32_t ra)
                                            &env->sp_status[i * 2]));
     }
 }
+
+static inline uint32_t float32_ceq(float32 a, float32 b, float_status *s)
+{
+    return float32_eq_quiet(a, b, s) ? -1 : 0;
+}
+
+static inline uint32_t float32_cmeq(float32 a, float32 b, float_status *s)
+{
+    return float32_eq_quiet(float32_abs(a), float32_abs(b), s) ? -1 : 0;
+}
+
+static inline uint32_t float32_cgt(float32 a, float32 b, float_status *s)
+{
+    return float32_lt_quiet(b, a, s) ? -1 : 0;
+}
+
+static inline uint32_t float32_cmgt(float32 a, float32 b, float_status *s)
+{
+    return float32_lt_quiet(float32_abs(b), float32_abs(a), s) ? -1 : 0;
+}
+
+HELPER_SP2(fceq, float32_ceq)
+HELPER_SP2(fcmeq, float32_cmeq)
+HELPER_SP2(fcgt, float32_cgt)
+HELPER_SP2(fcmgt, float32_cmgt)
+
+static inline uint64_t float64_ceq(float64 a, float64 b, float_status *s)
+{
+    return float64_eq_quiet(a, b, s) ? -1 : 0;
+}
+
+static inline uint64_t float64_cmeq(float64 a, float64 b, float_status *s)
+{
+    return float64_eq_quiet(float64_abs(a), float64_abs(b), s) ? -1 : 0;
+}
+
+static inline uint64_t float64_cgt(float64 a, float64 b, float_status *s)
+{
+    return float64_lt_quiet(b, a, s) ? -1 : 0;
+}
+
+static inline uint64_t float64_cmgt(float64 a, float64 b, float_status *s)
+{
+    return float64_lt_quiet(float64_abs(b), float64_abs(a), s) ? -1 : 0;
+}
+
+HELPER_DP(dfceq, ceq)
+HELPER_DP(dfcmeq, cmeq)
+HELPER_DP(dfcgt, cgt)
+HELPER_DP(dfcmgt, cmgt)
+
+uint32_t helper_dftsv(uint64_t a, uint32_t mask)
+{
+    bool test = false;
+
+    if (mask & 0x40) {
+        test |= float64_is_any_nan(a);
+    }
+    mask &= (float64_is_neg(a) ? 0x15 : 0x2a);
+    if (mask & 0x30) {
+        test |= float64_is_infinity(a);
+    }
+    if (mask & 0x0f) {
+        if (float64_is_zero(a)) {
+            test |= ((mask & 0x0c) != 0);
+        } else if (float64_is_zero_or_denormal(a)) {
+            test |= ((mask & 0x03) != 0);
+        }
+    }
+
+    return test ? -1 : 0;
+}

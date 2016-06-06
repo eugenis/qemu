@@ -1926,6 +1926,35 @@ BYINDEX_RI8_BIAS(cfltu, 173)
 BYINDEX_RR1(frds)
 BYINDEX_RR1(fesd)
 
+BYINDEX_RR(fceq)
+BYINDEX_RR(fcmeq)
+BYINDEX_RR(fcgt)
+BYINDEX_RR(fcmgt)
+
+BYINDEX_RR(dfceq)
+BYINDEX_RR(dfcmeq)
+BYINDEX_RR(dfcgt)
+BYINDEX_RR(dfcmgt)
+
+static ExitStatus insn_dftsv(DisassContext *ctx, uint32_t insn)
+{
+    DISASS_RI7;
+    TCGv mask = tcg_const_i32(imm);
+    TCGv_i64 doub = tcg_temp_new_i64();
+
+    tcg_gen_concat_i32_i64(doub, cpu_gpr[ra][1], cpu_gpr[ra][0]);
+    gen_helper_dftsv(cpu_gpr[rt][0], doub, mask);
+    tcg_gen_mov_tl(cpu_gpr[rt][1], cpu_gpr[rt][0]);
+
+    tcg_gen_concat_i32_i64(doub, cpu_gpr[ra][3], cpu_gpr[ra][2]);
+    gen_helper_dftsv(cpu_gpr[rt][2], doub, mask);
+    tcg_gen_mov_tl(cpu_gpr[rt][3], cpu_gpr[rt][2]);
+
+    tcg_temp_free_i64(doub);
+    tcg_temp_free(mask);
+    return NO_EXIT;
+}
+
 /* ---------------------------------------------------------------------- */
 /* Section 10: Control Instructions.  */
 
@@ -2265,15 +2294,15 @@ static InsnDescr const translate_table[0x800] = {
     INSN(0x764, RR, cfltu),
     INSN(0x772, RR, frds),
     INSN(0x770, RR, fesd),
-    // INSN(0x786, RR, DFCEQ),
-    // INSN(0x796, RR, DFCMEQ),
-    // INSN(0x586, RR, DFCGT),
-    // INSN(0x596, RR, DFCMGT),
-    // INSN(0x77e, RR, DFTSV),
-    // INSN(0x784, RR, FCEQ),
-    // INSN(0x794, RR, FCMEQ),
-    // INSN(0x584, RR, FCGT),
-    // INSN(0x594, RR, FCMGT),
+    INSN(0x786, RR, dfceq),
+    INSN(0x796, RR, dfcmeq),
+    INSN(0x586, RR, dfcgt),
+    INSN(0x596, RR, dfcmgt),
+    INSN(0x77e, RR, dftsv),
+    INSN(0x784, RR, fceq),
+    INSN(0x794, RR, fcmeq),
+    INSN(0x584, RR, fcgt),
+    INSN(0x594, RR, fcmgt),
     // INSN(0x774, RR, FSCRWR),
     // INSN(0x730, RR, FSCRRD),
 
