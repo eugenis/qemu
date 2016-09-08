@@ -5697,6 +5697,8 @@ case "$target_name" in
   ;;
   alpha)
   ;;
+  arc)
+  ;;
   arm|armeb)
     TARGET_ARCH=arm
     bflt="yes"
@@ -5898,6 +5900,9 @@ for i in $ARCH $TARGET_BASE_ARCH ; do
     if test -n "${cxx}"; then
       disas_config "ARM_A64"
     fi
+  ;;
+  arc)
+    disas_config "ARC"
   ;;
   arm)
     disas_config "ARM"
