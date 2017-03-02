@@ -501,7 +501,10 @@ static inline PageDesc *page_find(tb_page_addr_t index)
 /* Maximum size of the code gen buffer we'd like to use.  Unless otherwise
    indicated, this is constrained by the range of direct branches on the
    host cpu, as used by the TCG implementation of goto_tb.  */
-#if defined(__x86_64__)
+#if defined(CONFIG_TCG_INTERPRETER)
+  /* We have a +- 8GB range on the branches; but don't go overboard.  */
+# define MAX_CODE_GEN_BUFFER_SIZE  (3ul * 1024 * 1024 * 1024)
+#elif defined(__x86_64__)
 # define MAX_CODE_GEN_BUFFER_SIZE  (2ul * 1024 * 1024 * 1024)
 #elif defined(__sparc__)
 # define MAX_CODE_GEN_BUFFER_SIZE  (2ul * 1024 * 1024 * 1024)

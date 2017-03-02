@@ -120,6 +120,16 @@ static int tcg_target_const_match(tcg_target_long val, TCGType type,
 static bool tcg_out_ldst_finalize(TCGContext *s);
 #endif
 
+typedef struct TCGHelperInfo {
+    void *func;
+#ifdef CONFIG_TCG_INTERPRETER
+    ffi_cif *cif;
+#endif
+    const char *name;
+    unsigned flags;
+    unsigned sizemask;
+} TCGHelperInfo;
+
 static TCGRegSet tcg_target_available_regs[2];
 static TCGRegSet tcg_target_call_clobber_regs;
 
@@ -310,16 +320,6 @@ void tcg_pool_reset(TCGContext *s)
     s->pool_current = NULL;
 }
 
-typedef struct TCGHelperInfo {
-    void *func;
-#ifdef CONFIG_TCG_INTERPRETER
-    ffi_cif *cif;
-#endif
-    const char *name;
-    unsigned flags;
-    unsigned sizemask;
-} TCGHelperInfo;
-
 #include "exec/helper-proto.h"
 
 #ifdef CONFIG_TCG_INTERPRETER
@@ -373,6 +373,15 @@ void tcg_context_init(TCGContext *s)
         g_hash_table_insert(helper_table, (gpointer)all_helpers[i].func,
                             (gpointer)&all_helpers[i]);
     }
+
+#ifdef CONFIG_TCG_INTERPRETER
+    for (i = 0; i < ARRAY_SIZE(all_helpers); ++i) {
+        ffi_cif *cif = all_helpers[i].cif;
+        ffi_status ok = ffi_prep_cif(cif, FFI_DEFAULT_ABI, cif->nargs,
+                                     cif->rtype, cif->arg_types);
+        tcg_debug_assert(ok == FFI_OK);
+    }
+#endif
 
     tcg_target_init(s);
     process_op_defs(s);
@@ -456,10 +465,13 @@ void tcg_prologue_init(TCGContext *s)
     }
 #endif
 
+#ifndef CONFIG_TCG_INTERPRETER
     /* Assert that goto_ptr is implemented completely.  */
+    /* Note that TCI *does* use NULL as it's "epilogue".  */
     if (TCG_TARGET_HAS_goto_ptr) {
         tcg_debug_assert(s->code_gen_epilogue != NULL);
     }
+#endif
 }
 
 void tcg_func_start(TCGContext *s)
@@ -1078,27 +1090,37 @@ void tcg_gen_callN(TCGContext *s, void *func, TCGArg ret,
     } else {
         nb_rets = 0;
     }
+
     real_args = 0;
     for (i = 0; i < nargs; i++) {
-        int is_64bit = sizemask & (1 << (i+1)*2);
-        if (TCG_TARGET_REG_BITS < 64 && is_64bit) {
-#ifdef TCG_TARGET_CALL_ALIGN_ARGS
-            /* some targets want aligned 64 bit args */
-            if (real_args & 1) {
-                s->gen_opparam_buf[pi++] = TCG_CALL_DUMMY_ARG;
-                real_args++;
-            }
+        bool is_64bit = sizemask & (1 << (i+1)*2);
+        bool want_align = false;
+
+#if defined(CONFIG_TCG_INTERPRETER)
+        /* Align all arguments, so that they land in predictable places
+           for passing off to ffi_call.  */
+        want_align = true;
+#elif defined(TCG_TARGET_CALL_ALIGN_ARGS)
+        /* Some targets want aligned 64 bit args.  */
+        want_align = is_64bit;
 #endif
-           /* If stack grows up, then we will be placing successive
-              arguments at lower addresses, which means we need to
-              reverse the order compared to how we would normally
-              treat either big or little-endian.  For those arguments
-              that will wind up in registers, this still works for
-              HPPA (the only current STACK_GROWSUP target) since the
-              argument registers are *also* allocated in decreasing
-              order.  If another such target is added, this logic may
-              have to get more complicated to differentiate between
-              stack arguments and register arguments.  */
+
+        if (TCG_TARGET_REG_BITS < 64 && want_align && (real_args & 1)) {
+            s->gen_opparam_buf[pi++] = TCG_CALL_DUMMY_ARG;
+            real_args++;
+        }
+
+        if (TCG_TARGET_REG_BITS < 64 && is_64bit) {
+	    /* If stack grows up, then we will be placing successive
+	       arguments at lower addresses, which means we need to
+	       reverse the order compared to how we would normally
+	       treat either big or little-endian.  For those arguments
+	       that will wind up in registers, this still works for
+	       HPPA (the only current STACK_GROWSUP target) since the
+	       argument registers are *also* allocated in decreasing
+	       order.  If another such target is added, this logic may
+	       have to get more complicated to differentiate between
+	       stack arguments and register arguments.  */
 #if defined(HOST_WORDS_BIGENDIAN) != defined(TCG_TARGET_STACK_GROWSUP)
             s->gen_opparam_buf[pi++] = args[i] + 1;
             s->gen_opparam_buf[pi++] = args[i];
