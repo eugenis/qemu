@@ -545,13 +545,8 @@ static int avr_translate_BCLR(DisasContext *ctx, uint32_t opcode)
 static int avr_translate_BLD(DisasContext *ctx, uint32_t opcode)
 {
     TCGv Rd = cpu_r[BLD_Rd(opcode)];
-    TCGv t1 = tcg_temp_new_i32();
 
-    tcg_gen_andi_tl(Rd, Rd, ~(1u << BLD_Bit(opcode))); /* clear bit */
-    tcg_gen_shli_tl(t1, cpu_Tf, BLD_Bit(opcode)); /* create mask */
-    tcg_gen_or_tl(Rd, Rd, t1);
-
-    tcg_temp_free_i32(t1);
+    tcg_gen_deposit_tl(Rd, Rd, cpu_Tf, BLD_Bit(opcode), 1);
 
     return BS_NONE;
 }
@@ -2606,15 +2601,9 @@ static int avr_translate_SWAP(DisasContext *ctx, uint32_t opcode)
 {
     TCGv Rd = cpu_r[SWAP_Rd(opcode)];
     TCGv t0 = tcg_temp_new_i32();
-    TCGv t1 = tcg_temp_new_i32();
 
-    tcg_gen_andi_tl(t0, Rd, 0x0f);
-    tcg_gen_shli_tl(t0, t0, 4);
-    tcg_gen_andi_tl(t1, Rd, 0xf0);
-    tcg_gen_shri_tl(t1, t1, 4);
-    tcg_gen_or_tl(Rd, t0, t1);
-
-    tcg_temp_free_i32(t1);
+    tcg_gen_extract_tl(t0, Rd, 4, 4);
+    tcg_gen_deposit_tl(Rd, t0, Rd, 4, 4);
     tcg_temp_free_i32(t0);
 
     return BS_NONE;
