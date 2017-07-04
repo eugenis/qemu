@@ -110,18 +110,17 @@ static void gen_add_CHf(TCGv R, TCGv Rd, TCGv Rr)
     TCGv t2 = tcg_temp_new_i32();
     TCGv t3 = tcg_temp_new_i32();
 
+    /* Compute carry for all output bits.  */
     tcg_gen_and_tl(t1, Rd, Rr); /* t1 = Rd & Rr */
     tcg_gen_andc_tl(t2, Rd, R); /* t2 = Rd & ~R */
     tcg_gen_andc_tl(t3, Rr, R); /* t3 = Rr & ~R */
     tcg_gen_or_tl(t1, t1, t2); /* t1 = t1 | t2 | t3 */
     tcg_gen_or_tl(t1, t1, t3);
-
-    tcg_gen_shri_tl(cpu_Cf, t1, 7); /* Cf = t1(7) */
-    tcg_gen_shri_tl(cpu_Hf, t1, 3); /* Hf = t1(3) */
-    tcg_gen_andi_tl(cpu_Hf, cpu_Hf, 1);
-
     tcg_temp_free_i32(t3);
     tcg_temp_free_i32(t2);
+
+    tcg_gen_extract_tl(cpu_Cf, t1, 7, 1);
+    tcg_gen_extract_tl(cpu_Hf, t1, 3, 1);
     tcg_temp_free_i32(t1);
 }
 
@@ -130,14 +129,13 @@ static void gen_add_Vf(TCGv R, TCGv Rd, TCGv Rr)
     TCGv t1 = tcg_temp_new_i32();
     TCGv t2 = tcg_temp_new_i32();
 
-        /* t1 = Rd & Rr & ~R | ~Rd & ~Rr & R = (Rd ^ R) & ~(Rd ^ Rr) */
+    /* t1 = Rd & Rr & ~R | ~Rd & ~Rr & R = (Rd ^ R) & ~(Rd ^ Rr) */
     tcg_gen_xor_tl(t1, Rd, R);
     tcg_gen_xor_tl(t2, Rd, Rr);
     tcg_gen_andc_tl(t1, t1, t2);
-
-    tcg_gen_shri_tl(cpu_Vf, t1, 7); /* Vf = t1(7) */
-
     tcg_temp_free_i32(t2);
+
+    tcg_gen_extract_tl(cpu_Vf, t1, 7, 1);
     tcg_temp_free_i32(t1);
 }
 
@@ -145,20 +143,17 @@ static void gen_sub_CHf(TCGv R, TCGv Rd, TCGv Rr)
 {
     TCGv t1 = tcg_temp_new_i32();
     TCGv t2 = tcg_temp_new_i32();
-    TCGv t3 = tcg_temp_new_i32();
 
     /* Cf & Hf */
-    tcg_gen_not_tl(t1, Rd); /* t1 = ~Rd */
+    tcg_gen_not_tl(t1, Rd);     /* t1 = ~Rd */
     tcg_gen_and_tl(t2, t1, Rr); /* t2 = ~Rd & Rr */
-    tcg_gen_or_tl(t3, t1, Rr); /* t3 = (~Rd | Rr) & R */
-    tcg_gen_and_tl(t3, t3, R);
-    tcg_gen_or_tl(t2, t2, t3); /* t2 = ~Rd & Rr | ~Rd & R | R & Rr */
-    tcg_gen_shri_tl(cpu_Cf, t2, 7); /* Cf = t2(7) */
-    tcg_gen_shri_tl(cpu_Hf, t2, 3); /* Hf = t2(3) */
-    tcg_gen_andi_tl(cpu_Hf, cpu_Hf, 1);
-
-    tcg_temp_free_i32(t3);
+    tcg_gen_or_tl(t1, t1, Rr);  /* t1 = (~Rd | Rr) & R */
+    tcg_gen_and_tl(t1, t1, R);
+    tcg_gen_or_tl(t1, t1, t2);  /* t1 = ~Rd & Rr | ~Rd & R | R & Rr */
     tcg_temp_free_i32(t2);
+
+    tcg_gen_extract_tl(cpu_Cf, t1, 7, 1);
+    tcg_gen_extract_tl(cpu_Hf, t1, 3, 1);
     tcg_temp_free_i32(t1);
 }
 
@@ -168,27 +163,26 @@ static void gen_sub_Vf(TCGv R, TCGv Rd, TCGv Rr)
     TCGv t2 = tcg_temp_new_i32();
 
     /* Vf */
-        /* t1 = Rd & ~Rr & ~R | ~Rd & Rr & R = (Rd ^ R) & (Rd ^ R) */
+    /* t1 = Rd & ~Rr & ~R | ~Rd & Rr & R = (Rd ^ R) & (Rd ^ R) */
     tcg_gen_xor_tl(t1, Rd, R);
     tcg_gen_xor_tl(t2, Rd, Rr);
     tcg_gen_and_tl(t1, t1, t2);
-    tcg_gen_shri_tl(cpu_Vf, t1, 7); /* Vf = t1(7) */
-
     tcg_temp_free_i32(t2);
+
+    tcg_gen_extract_tl(cpu_Vf, t1, 7, 1);
     tcg_temp_free_i32(t1);
 }
 
 static void gen_NSf(TCGv R)
 {
-    tcg_gen_shri_tl(cpu_Nf, R, 7); /* Nf = R(7) */
+    tcg_gen_extract_tl(cpu_Nf, R, 7, 1); /* Nf = R(7) */
     tcg_gen_xor_tl(cpu_Sf, cpu_Nf, cpu_Vf); /* Sf = Nf ^ Vf */
 }
 
 static void gen_ZNSf(TCGv R)
 {
     tcg_gen_mov_tl(cpu_Zf, R); /* Zf = R */
-    tcg_gen_shri_tl(cpu_Nf, R, 7); /* Nf = R(7) */
-    tcg_gen_xor_tl(cpu_Sf, cpu_Nf, cpu_Vf); /* Sf = Nf ^ Vf */
+    gen_NSf(R);
 }
 
 static void gen_push_ret(DisasContext *ctx, int ret)
@@ -278,12 +272,8 @@ static void gen_jmp_z(void)
  */
 static void gen_set_addr(TCGv addr, TCGv H, TCGv M, TCGv L)
 {
-
-    tcg_gen_andi_tl(L, addr, 0x000000ff);
-
-    tcg_gen_andi_tl(M, addr, 0x0000ff00);
-    tcg_gen_shri_tl(M, M, 8);
-
+    tcg_gen_extract_tl(L, addr, 0, 8);
+    tcg_gen_extract_tl(M, addr, 8, 8);
     tcg_gen_andi_tl(H, addr, 0x00ff0000);
 }
 
@@ -721,8 +711,7 @@ static int avr_translate_BST(DisasContext *ctx, uint32_t opcode)
 {
     TCGv Rd = cpu_r[BST_Rd(opcode)];
 
-    tcg_gen_andi_tl(cpu_Tf, Rd, 1 << BST_Bit(opcode));
-    tcg_gen_shri_tl(cpu_Tf, cpu_Tf, BST_Bit(opcode));
+    tcg_gen_extract_tl(cpu_Tf, Rd, BST_Bit(opcode), 1);
 
     return BS_NONE;
 }
@@ -1102,9 +1091,8 @@ static int avr_translate_FMUL(DisasContext *ctx, uint32_t opcode)
     tcg_gen_mul_tl(R, Rd, Rr); /* R = Rd *Rr */
     tcg_gen_shli_tl(R, R, 1);
 
-    tcg_gen_andi_tl(R0, R, 0xff);
-    tcg_gen_shri_tl(R, R, 8);
-    tcg_gen_andi_tl(R1, R, 0xff);
+    tcg_gen_extract_tl(R0, R, 0, 8);
+    tcg_gen_extract_tl(R1, R, 8, 8);
 
     tcg_gen_shri_tl(cpu_Cf, R, 16); /* Cf = R(16) */
     tcg_gen_andi_tl(cpu_Zf, R, 0x0000ffff);
@@ -1139,9 +1127,8 @@ static int avr_translate_FMULS(DisasContext *ctx, uint32_t opcode)
     tcg_gen_mul_tl(R, t0, t1); /* R = Rd *Rr */
     tcg_gen_shli_tl(R, R, 1);
 
-    tcg_gen_andi_tl(R0, R, 0xff);
-    tcg_gen_shri_tl(R, R, 8);
-    tcg_gen_andi_tl(R1, R, 0xff);
+    tcg_gen_extract_tl(R0, R, 0, 8);
+    tcg_gen_extract_tl(R1, R, 8, 8);
 
     tcg_gen_shri_tl(cpu_Cf, R, 16); /* Cf = R(16) */
     tcg_gen_andi_tl(cpu_Zf, R, 0x0000ffff);
@@ -1176,9 +1163,8 @@ static int avr_translate_FMULSU(DisasContext *ctx, uint32_t opcode)
     tcg_gen_mul_tl(R, t0, Rr); /* R = Rd *Rr */
     tcg_gen_shli_tl(R, R, 1);
 
-    tcg_gen_andi_tl(R0, R, 0xff);
-    tcg_gen_shri_tl(R, R, 8);
-    tcg_gen_andi_tl(R1, R, 0xff);
+    tcg_gen_extract_tl(R0, R, 0, 8);
+    tcg_gen_extract_tl(R1, R, 8, 8);
 
     tcg_gen_shri_tl(cpu_Cf, R, 16); /* Cf = R(16) */
     tcg_gen_andi_tl(cpu_Zf, R, 0x0000ffff);
@@ -1743,10 +1729,8 @@ static int avr_translate_LPMX(DisasContext *ctx, uint32_t opcode)
 
     tcg_gen_addi_tl(addr, addr, 1); /* addr = addr + 1 */
 
-    tcg_gen_andi_tl(L, addr, 0xff);
-
-    tcg_gen_shri_tl(addr, addr, 8);
-    tcg_gen_andi_tl(H, addr, 0xff);
+    tcg_gen_extract_tl(L, addr, 0, 8);
+    tcg_gen_extract_tl(H, addr, 8, 8);
 
     tcg_temp_free_i32(addr);
 
@@ -1831,10 +1815,8 @@ static int avr_translate_MUL(DisasContext *ctx, uint32_t opcode)
 
     tcg_gen_mul_tl(R, Rd, Rr); /* R = Rd *Rr */
 
-    tcg_gen_mov_tl(R0, R);
-    tcg_gen_andi_tl(R0, R0, 0xff);
-    tcg_gen_shri_tl(R, R, 8);
-    tcg_gen_mov_tl(R1, R);
+    tcg_gen_extract_tl(R0, R, 0, 8);
+    tcg_gen_extract_tl(R1, R, 8, 8);
 
     tcg_gen_shri_tl(cpu_Cf, R, 15); /* Cf = R(16) */
     tcg_gen_mov_tl(cpu_Zf, R);
@@ -1867,11 +1849,8 @@ static int avr_translate_MULS(DisasContext *ctx, uint32_t opcode)
     tcg_gen_ext8s_tl(t1, Rr); /* make Rr full 32 bit signed */
     tcg_gen_mul_tl(R, t0, t1); /* R = Rd * Rr */
 
-    tcg_gen_mov_tl(R0, R);
-    tcg_gen_andi_tl(R0, R0, 0xff);
-    tcg_gen_shri_tl(R, R, 8);
-    tcg_gen_mov_tl(R1, R);
-    tcg_gen_andi_tl(R1, R0, 0xff);
+    tcg_gen_extract_tl(R0, R, 0, 8);
+    tcg_gen_extract_tl(R1, R, 8, 8);
 
     tcg_gen_shri_tl(cpu_Cf, R, 15); /* Cf = R(16) */
     tcg_gen_mov_tl(cpu_Zf, R);
@@ -1905,11 +1884,8 @@ static int avr_translate_MULSU(DisasContext *ctx, uint32_t opcode)
     tcg_gen_ext8s_tl(t0, Rd); /* make Rd full 32 bit signed */
     tcg_gen_mul_tl(R, t0, Rr); /* R = Rd *Rr */
 
-    tcg_gen_mov_tl(R0, R);
-    tcg_gen_andi_tl(R0, R0, 0xff);
-    tcg_gen_shri_tl(R, R, 8);
-    tcg_gen_mov_tl(R1, R);
-    tcg_gen_andi_tl(R1, R0, 0xff);
+    tcg_gen_extract_tl(R0, R, 0, 8);
+    tcg_gen_extract_tl(R1, R, 8, 8);
 
     tcg_gen_shri_tl(cpu_Cf, R, 16); /* Cf = R(16) */
     tcg_gen_mov_tl(cpu_Zf, R);
