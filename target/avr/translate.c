@@ -2123,7 +2123,7 @@ static int avr_translate_ROR(DisasContext *ctx, uint32_t opcode)
     TCGv t0 = tcg_temp_new_i32();
 
     tcg_gen_shli_tl(t0, cpu_Cf, 7);
-    tcg_gen_andi_tl(cpu_Cf, Rd, 0);
+    tcg_gen_andi_tl(cpu_Cf, Rd, 1);
     tcg_gen_shri_tl(Rd, Rd, 1);
     tcg_gen_or_tl(Rd, Rd, t0);
 
