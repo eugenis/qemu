@@ -38,6 +38,7 @@
 #define DISAS_GPF        DISAS_TARGET_3
 #define DISAS_EOB        DISAS_TARGET_4
 #define DISAS_NEXT_INHIBIT_IRQ  DISAS_TARGET_5
+#define DISAS_EOB_RECHECK_TF    DISAS_TARGET_6
 
 #define PREFIX_REPZ   0x01
 #define PREFIX_REPNZ  0x02
@@ -7246,11 +7247,10 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         gen_update_cc_op(s);
         gen_jmp_im(s, pc_start - s->cs_base);
         gen_helper_syscall(cpu_env, tcg_const_i32(s->pc - pc_start));
-        /* TF handling for the syscall insn is different. The TF bit is  checked
+        /* TF handling for the syscall insn is different. The TF bit is checked
            after the syscall insn completes. This allows #DB to not be
            generated after one has entered CPL0 if TF is set in FMASK.  */
-        gen_eob_worker(s, false, true);
-        break;
+        return DISAS_EOB_RECHECK_TF;
     case 0x107: /* sysret */
         if (!s->pe) {
             return DISAS_GPF;
@@ -7264,7 +7264,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                checked after the sysret insn completes. This allows #DB to be
                generated "as if" the syscall insn in userspace has just
                completed.  */
-            gen_eob_worker(s, false, true);
+            return DISAS_EOB_RECHECK_TF;
         }
         break;
 #endif
@@ -8590,6 +8590,9 @@ static void i386_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
     case DISAS_NEXT_INHIBIT_IRQ:
         gen_jmp_im(dc, dc->base.pc_next - dc->cs_base);
         gen_eob_worker(dc, true, false);
+        break;
+    case DISAS_EOB_RECHECK_TF:
+        gen_eob_worker(dc, false, true);
         break;
     case DISAS_NORETURN:
         break;
