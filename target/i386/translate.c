@@ -2225,6 +2225,9 @@ static inline int insn_const_size(TCGMemOp ot)
 
 static inline bool use_goto_tb(DisasContext *s, target_ulong pc)
 {
+    if (!s->jmp_opt) {
+        return false;
+    }
 #ifndef CONFIG_USER_ONLY
     return (pc & TARGET_PAGE_MASK) == (s->base.tb->pc & TARGET_PAGE_MASK) ||
            (pc & TARGET_PAGE_MASK) == (s->pc_start & TARGET_PAGE_MASK);
