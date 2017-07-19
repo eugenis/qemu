@@ -1278,12 +1278,12 @@ static void gen_helper_fp_arith_STN_ST0(int op, int opreg)
     }
 }
 
-static void gen_exception(DisasContext *s, int trapno)
+static DisasJumpType gen_exception(DisasContext *s, int trapno)
 {
     gen_update_cc_op(s);
     gen_jmp_im(s, s->pc_start - s->cs_base);
     gen_helper_raise_exception(cpu_env, tcg_const_i32(trapno));
-    s->base.is_jmp = DISAS_NORETURN;
+    return DISAS_NORETURN;
 }
 
 /* Generate #UD for the current instruction.  The assumption here is that
@@ -7019,7 +7019,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         }
         val = x86_ldub_code(env, s);
         if (val == 0) {
-            gen_exception(s, EXCP00_DIVZ);
+            return gen_exception(s, EXCP00_DIVZ);
         } else {
             gen_helper_aam(cpu_env, tcg_const_i32(val));
             set_cc_op(s, CC_OP_LOGICB);
