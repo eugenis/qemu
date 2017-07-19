@@ -34,6 +34,7 @@
 
 #define DISAS_UNKNOWN    DISAS_TARGET_0
 #define DISAS_ILLEGAL    DISAS_TARGET_1
+#define DISAS_PREX       DISAS_TARGET_2
 
 #define PREFIX_REPZ   0x01
 #define PREFIX_REPNZ  0x02
@@ -3078,8 +3079,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
     }
     /* simple MMX/SSE operation */
     if (s->flags & HF_TS_MASK) {
-        gen_exception(s, EXCP07_PREX);
-        return DISAS_NORETURN;
+        return DISAS_PREX;
     }
     if (s->flags & HF_EM_MASK) {
         return DISAS_ILLEGAL;
@@ -5872,8 +5872,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         if (s->flags & (HF_EM_MASK | HF_TS_MASK)) {
             /* if CR0.EM or CR0.TS are set, generate an FPU exception */
             /* XXX: what to do if illegal op ? */
-            gen_exception(s, EXCP07_PREX);
-            break;
+            return DISAS_PREX;
         }
         modrm = x86_ldub_code(env, s);
         mod = (modrm >> 6) & 3;
@@ -7084,7 +7083,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
     case 0x9b: /* fwait */
         if ((s->flags & (HF_MP_MASK | HF_TS_MASK)) ==
             (HF_MP_MASK | HF_TS_MASK)) {
-            gen_exception(s, EXCP07_PREX);
+            return DISAS_PREX;
         } else {
             gen_helper_fwait(cpu_env);
         }
@@ -8181,8 +8180,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 return DISAS_ILLEGAL;
             }
             if ((s->flags & HF_EM_MASK) || (s->flags & HF_TS_MASK)) {
-                gen_exception(s, EXCP07_PREX);
-                break;
+                return DISAS_PREX;
             }
             gen_lea_modrm(env, s, modrm);
             gen_helper_fxsave(cpu_env, s->A0);
@@ -8194,8 +8192,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 return DISAS_ILLEGAL;
             }
             if ((s->flags & HF_EM_MASK) || (s->flags & HF_TS_MASK)) {
-                gen_exception(s, EXCP07_PREX);
-                break;
+                return DISAS_PREX;
             }
             gen_lea_modrm(env, s, modrm);
             gen_helper_fxrstor(cpu_env, s->A0);
@@ -8206,8 +8203,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 return DISAS_ILLEGAL;
             }
             if (s->flags & HF_TS_MASK) {
-                gen_exception(s, EXCP07_PREX);
-                break;
+                return DISAS_PREX;
             }
             gen_lea_modrm(env, s, modrm);
             tcg_gen_qemu_ld_i32(s->tmp2_i32, s->A0, s->mem_index, MO_LEUL);
@@ -8219,8 +8215,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 return DISAS_ILLEGAL;
             }
             if (s->flags & HF_TS_MASK) {
-                gen_exception(s, EXCP07_PREX);
-                break;
+                return DISAS_PREX;
             }
             gen_lea_modrm(env, s, modrm);
             tcg_gen_ld32u_tl(s->T0, cpu_env, offsetof(CPUX86State, mxcsr));
@@ -8667,6 +8662,9 @@ static void i386_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
         break;
     case DISAS_ILLEGAL:
         gen_illegal_opcode(dc);
+        break;
+    case DISAS_PREX:
+        gen_exception(dc, EXCP07_PREX);
         break;
     default:
         g_assert_not_reached();
