@@ -3064,7 +3064,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
         b1 = 0;
     sse_fn_epp = sse_op_table1[b][b1];
     if (!sse_fn_epp) {
-        goto unknown_op;
+        return DISAS_UNKNOWN;
     }
     if ((b <= 0x5f && b >= 0x10) || b == 0xc6 || b == 0xc2) {
         is_xmm = 1;
@@ -3082,18 +3082,17 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
         return DISAS_NORETURN;
     }
     if (s->flags & HF_EM_MASK) {
-    illegal_op:
         return DISAS_ILLEGAL;
     }
     if (is_xmm
         && !(s->flags & HF_OSFXSR_MASK)
         && ((b != 0x38 && b != 0x3a) || (s->prefix & PREFIX_DATA))) {
-        goto unknown_op;
+        return DISAS_UNKNOWN;
     }
     if (b == 0x0e) {
         if (!(s->cpuid_ext2_features & CPUID_EXT2_3DNOW)) {
             /* If we were fully decoding this we might use illegal_op.  */
-            goto unknown_op;
+            return DISAS_UNKNOWN;
         }
         /* femms */
         gen_helper_emms(cpu_env);
@@ -3121,7 +3120,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
         switch(b) {
         case 0x0e7: /* movntq */
             if (mod == 3) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             gen_lea_modrm(env, s, modrm);
             gen_stq_env_A0(s, offsetof(CPUX86State, fpregs[reg].mmx));
@@ -3129,21 +3128,24 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
         case 0x1e7: /* movntdq */
         case 0x02b: /* movntps */
         case 0x12b: /* movntps */
-            if (mod == 3)
-                goto illegal_op;
+            if (mod == 3) {
+                return DISAS_ILLEGAL;
+            }
             gen_lea_modrm(env, s, modrm);
             gen_sto_env_A0(s, offsetof(CPUX86State, xmm_regs[reg]));
             break;
         case 0x3f0: /* lddqu */
-            if (mod == 3)
-                goto illegal_op;
+            if (mod == 3) {
+                return DISAS_ILLEGAL;
+            }
             gen_lea_modrm(env, s, modrm);
             gen_ldo_env_A0(s, offsetof(CPUX86State, xmm_regs[reg]));
             break;
         case 0x22b: /* movntss */
         case 0x32b: /* movntsd */
-            if (mod == 3)
-                goto illegal_op;
+            if (mod == 3) {
+                return DISAS_ILLEGAL;
+            }
             gen_lea_modrm(env, s, modrm);
             if (b1 & 1) {
                 gen_stq_env_A0(s, offsetof(CPUX86State,
@@ -3325,8 +3327,9 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
             {
                 int bit_index, field_length;
 
-                if (b1 == 1 && reg != 0)
-                    goto illegal_op;
+                if (b1 == 1 && reg != 0) {
+                    return DISAS_ILLEGAL;
+                }
                 field_length = x86_ldub_code(env, s) & 0x3F;
                 bit_index = x86_ldub_code(env, s) & 0x3F;
                 tcg_gen_addi_ptr(s->ptr0, cpu_env,
@@ -3436,7 +3439,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
                 gen_stq_env_A0(s, offsetof(CPUX86State,
                                            xmm_regs[reg].ZMM_Q(0)));
             } else {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             break;
         case 0x017: /* movhps */
@@ -3446,7 +3449,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
                 gen_stq_env_A0(s, offsetof(CPUX86State,
                                            xmm_regs[reg].ZMM_Q(1)));
             } else {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             break;
         case 0x71: /* shift mm, im */
@@ -3456,7 +3459,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
         case 0x172:
         case 0x173:
             if (b1 >= 2) {
-                goto unknown_op;
+                return DISAS_UNKNOWN;
             }
             val = x86_ldub_code(env, s);
             if (is_xmm) {
@@ -3479,7 +3482,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
             sse_fn_epp = sse_op_table2[((b - 1) & 3) * 8 +
                                        (((modrm >> 3)) & 7)][b1];
             if (!sse_fn_epp) {
-                goto unknown_op;
+                return DISAS_UNKNOWN;
             }
             if (is_xmm) {
                 rm = (modrm & 7) | REX_B(s);
@@ -3545,7 +3548,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
                 SSEFunc_0_epl sse_fn_epl = sse_op_table3aq[(b >> 8) & 1];
                 sse_fn_epl(cpu_env, s->ptr0, s->T0);
 #else
-                goto illegal_op;
+                return DISAS_ILLEGAL;
 #endif
             }
             break;
@@ -3611,7 +3614,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
                     sse_op_table3bq[((b >> 7) & 2) | (b & 1)];
                 sse_fn_l_ep(s->T0, cpu_env, s->ptr0);
 #else
-                goto illegal_op;
+                return DISAS_ILLEGAL;
 #endif
             }
             gen_op_mov_reg_v(s, ot, reg, s->T0);
@@ -3633,8 +3636,9 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
             break;
         case 0xc5: /* pextrw */
         case 0x1c5:
-            if (mod != 3)
-                goto illegal_op;
+            if (mod != 3) {
+                return DISAS_ILLEGAL;
+            }
             ot = mo_64_32(s->dflag);
             val = x86_ldub_code(env, s);
             if (b1) {
@@ -3679,8 +3683,9 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
             break;
         case 0xd7: /* pmovmskb */
         case 0x1d7:
-            if (mod != 3)
-                goto illegal_op;
+            if (mod != 3) {
+                return DISAS_ILLEGAL;
+            }
             if (b1) {
                 rm = (modrm & 7) | REX_B(s);
                 tcg_gen_addi_ptr(s->ptr0, cpu_env,
@@ -3707,15 +3712,16 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
             reg = ((modrm >> 3) & 7) | REX_R(s);
             mod = (modrm >> 6) & 3;
             if (b1 >= 2) {
-                goto unknown_op;
+                return DISAS_UNKNOWN;
             }
 
             sse_fn_epp = sse_op_table6[b].op[b1];
             if (!sse_fn_epp) {
-                goto unknown_op;
+                return DISAS_UNKNOWN;
             }
-            if (!(s->cpuid_ext_features & sse_op_table6[b].ext_mask))
-                goto illegal_op;
+            if (!(s->cpuid_ext_features & sse_op_table6[b].ext_mask)) {
+                return DISAS_ILLEGAL;
+            }
 
             if (b1) {
                 op1_offset = offsetof(CPUX86State,xmm_regs[reg]);
@@ -3762,7 +3768,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
                 }
             }
             if (sse_fn_epp == SSE_SPECIAL) {
-                goto unknown_op;
+                return DISAS_UNKNOWN;
             }
 
             tcg_gen_addi_ptr(s->ptr0, cpu_env, op1_offset);
@@ -3787,7 +3793,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
             case 0x3f1: /* crc32 Gd,Ey */
             do_crc32:
                 if (!(s->cpuid_ext_features & CPUID_EXT_SSE42)) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 if ((b & 0xff) == 0xf0) {
                     ot = MO_8;
@@ -3818,7 +3824,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
             case 0x0f0: /* movbe Gy,My */
             case 0x0f1: /* movbe My,Gy */
                 if (!(s->cpuid_ext_features & CPUID_EXT_MOVBE)) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 if (s->dflag != MO_64) {
                     ot = (s->prefix & PREFIX_DATA ? MO_16 : MO_32);
@@ -3841,7 +3847,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
                 if (!(s->cpuid_7_0_ebx_features & CPUID_7_0_EBX_BMI1)
                     || !(s->prefix & PREFIX_VEX)
                     || s->vex_l != 0) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 ot = mo_64_32(s->dflag);
                 gen_ldst_modrm(env, s, modrm, ot, OR_TMP0, 0);
@@ -3855,7 +3861,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
                 if (!(s->cpuid_7_0_ebx_features & CPUID_7_0_EBX_BMI1)
                     || !(s->prefix & PREFIX_VEX)
                     || s->vex_l != 0) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 ot = mo_64_32(s->dflag);
                 {
@@ -3894,7 +3900,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
                 if (!(s->cpuid_7_0_ebx_features & CPUID_7_0_EBX_BMI2)
                     || !(s->prefix & PREFIX_VEX)
                     || s->vex_l != 0) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 ot = mo_64_32(s->dflag);
                 gen_ldst_modrm(env, s, modrm, ot, OR_TMP0, 0);
@@ -3921,7 +3927,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
                 if (!(s->cpuid_7_0_ebx_features & CPUID_7_0_EBX_BMI2)
                     || !(s->prefix & PREFIX_VEX)
                     || s->vex_l != 0) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 ot = mo_64_32(s->dflag);
                 gen_ldst_modrm(env, s, modrm, ot, OR_TMP0, 0);
@@ -3949,7 +3955,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
                 if (!(s->cpuid_7_0_ebx_features & CPUID_7_0_EBX_BMI2)
                     || !(s->prefix & PREFIX_VEX)
                     || s->vex_l != 0) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 ot = mo_64_32(s->dflag);
                 gen_ldst_modrm(env, s, modrm, ot, OR_TMP0, 0);
@@ -3967,7 +3973,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
                 if (!(s->cpuid_7_0_ebx_features & CPUID_7_0_EBX_BMI2)
                     || !(s->prefix & PREFIX_VEX)
                     || s->vex_l != 0) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 ot = mo_64_32(s->dflag);
                 gen_ldst_modrm(env, s, modrm, ot, OR_TMP0, 0);
@@ -3984,7 +3990,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
             case 0x1f6: /* adcx Gy, Ey */
             case 0x2f6: /* adox Gy, Ey */
                 if (!(s->cpuid_7_0_ebx_features & CPUID_7_0_EBX_ADX)) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 } else {
                     TCGv carry_in, carry_out, zero;
                     int end_op;
@@ -4065,7 +4071,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
                 if (!(s->cpuid_7_0_ebx_features & CPUID_7_0_EBX_BMI2)
                     || !(s->prefix & PREFIX_VEX)
                     || s->vex_l != 0) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 ot = mo_64_32(s->dflag);
                 gen_ldst_modrm(env, s, modrm, ot, OR_TMP0, 0);
@@ -4097,7 +4103,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
                 if (!(s->cpuid_7_0_ebx_features & CPUID_7_0_EBX_BMI1)
                     || !(s->prefix & PREFIX_VEX)
                     || s->vex_l != 0) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 ot = mo_64_32(s->dflag);
                 gen_ldst_modrm(env, s, modrm, ot, OR_TMP0, 0);
@@ -4117,7 +4123,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
                     tcg_gen_and_tl(s->T0, s->T0, s->T1);
                     break;
                 default:
-                    goto unknown_op;
+                    return DISAS_UNKNOWN;
                 }
                 tcg_gen_mov_tl(cpu_cc_dst, s->T0);
                 gen_op_mov_reg_v(s, ot, s->vex_v, s->T0);
@@ -4125,7 +4131,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
                 break;
 
             default:
-                goto unknown_op;
+                return DISAS_UNKNOWN;
             }
             break;
 
@@ -4137,15 +4143,16 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
             reg = ((modrm >> 3) & 7) | REX_R(s);
             mod = (modrm >> 6) & 3;
             if (b1 >= 2) {
-                goto unknown_op;
+                return DISAS_UNKNOWN;
             }
 
             sse_fn_eppi = sse_op_table7[b].op[b1];
             if (!sse_fn_eppi) {
-                goto unknown_op;
+                return DISAS_UNKNOWN;
             }
-            if (!(s->cpuid_ext_features & sse_op_table7[b].ext_mask))
-                goto illegal_op;
+            if (!(s->cpuid_ext_features & sse_op_table7[b].ext_mask)) {
+                return DISAS_ILLEGAL;
+            }
 
             s->rip_offset = 1;
 
@@ -4200,7 +4207,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
                                                 s->mem_index, MO_LEQ);
                         }
 #else
-                        goto illegal_op;
+                        return DISAS_ILLEGAL;
 #endif
                     }
                     break;
@@ -4276,7 +4283,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
                                         offsetof(CPUX86State,
                                                 xmm_regs[reg].ZMM_Q(val & 1)));
 #else
-                        goto illegal_op;
+                        return DISAS_ILLEGAL;
 #endif
                     }
                     break;
@@ -4330,7 +4337,7 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
                 if (!(s->cpuid_7_0_ebx_features & CPUID_7_0_EBX_BMI2)
                     || !(s->prefix & PREFIX_VEX)
                     || s->vex_l != 0) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 ot = mo_64_32(s->dflag);
                 gen_ldst_modrm(env, s, modrm, ot, OR_TMP0, 0);
@@ -4346,12 +4353,11 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
                 break;
 
             default:
-                goto unknown_op;
+                return DISAS_UNKNOWN;
             }
             break;
 
         default:
-        unknown_op:
             return DISAS_UNKNOWN;
         }
     } else {
@@ -4431,10 +4437,10 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
             val = x86_ldub_code(env, s);
             sse_fn_epp = sse_op_table5[val];
             if (!sse_fn_epp) {
-                goto unknown_op;
+                return DISAS_UNKNOWN;
             }
             if (!(s->cpuid_ext2_features & CPUID_EXT2_3DNOW)) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             tcg_gen_addi_ptr(s->ptr0, cpu_env, op1_offset);
             tcg_gen_addi_ptr(s->ptr1, cpu_env, op2_offset);
@@ -4452,8 +4458,9 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
         case 0xc2:
             /* compare insns */
             val = x86_ldub_code(env, s);
-            if (val >= 8)
-                goto unknown_op;
+            if (val >= 8) {
+                return DISAS_UNKNOWN;
+            }
             sse_fn_epp = sse_op_table4[val][b1];
 
             tcg_gen_addi_ptr(s->ptr0, cpu_env, op1_offset);
@@ -4462,8 +4469,9 @@ static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
             break;
         case 0xf7:
             /* maskmov : we must prepare A0 */
-            if (mod != 3)
-                goto illegal_op;
+            if (mod != 3) {
+                return DISAS_ILLEGAL;
+            }
             tcg_gen_mov_tl(s->A0, cpu_regs[R_EDI]);
             gen_extu(s->aflag, s->A0);
             gen_add_A0_ds_seg(s);
@@ -4593,11 +4601,11 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             /* 4.1.1-4.1.3: No preceding lock, 66, f2, f3, or rex prefixes. */
             if (prefixes & (PREFIX_REPZ | PREFIX_REPNZ
                             | PREFIX_LOCK | PREFIX_DATA)) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
 #ifdef TARGET_X86_64
             if (s->x86_64_hregs) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             s->rex_r = (~vex2 >> 4) & 8;
 #endif
@@ -4626,7 +4634,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                     b = 0x13a;
                     break;
                 default:   /* Reserved for future use.  */
-                    goto unknown_op;
+                    return DISAS_UNKNOWN;
                 }
             }
             s->vex_v = (~vex3 >> 3) & 0xf;
@@ -4737,8 +4745,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         break;
 
     case 0x82:
-        if (CODE64(s))
-            goto illegal_op;
+        if (CODE64(s)) {
+            return DISAS_ILLEGAL;
+        }
         /* fall through */
     case 0x80: /* GRP1 */
     case 0x81:
@@ -4822,7 +4831,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         case 2: /* not */
             if (s->prefix & PREFIX_LOCK) {
                 if (mod == 3) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 tcg_gen_movi_tl(s->T0, ~0);
                 tcg_gen_atomic_xor_fetch_tl(s->T0, s->A0, s->T0,
@@ -4842,7 +4851,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 TCGv a0, t0, t1, t2;
 
                 if (mod == 3) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 a0 = tcg_temp_local_new();
                 t0 = tcg_temp_local_new();
@@ -5018,7 +5027,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             }
             break;
         default:
-            goto unknown_op;
+            return DISAS_UNKNOWN;
         }
         break;
 
@@ -5031,7 +5040,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         rm = (modrm & 7) | REX_B(s);
         op = (modrm >> 3) & 7;
         if (op >= 2 && b == 0xfe) {
-            goto unknown_op;
+            return DISAS_UNKNOWN;
         }
         if (CODE64(s)) {
             if (op == 2 || op == 4) {
@@ -5126,7 +5135,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             gen_push_v(s, s->T0);
             break;
         default:
-            goto unknown_op;
+            return DISAS_UNKNOWN;
         }
         break;
 
@@ -5301,7 +5310,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
 
             if (s->prefix & PREFIX_LOCK) {
                 if (mod == 3) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 gen_lea_modrm(env, s, modrm);
                 tcg_gen_atomic_cmpxchg_tl(oldv, s->A0, cmpv, newv,
@@ -5347,12 +5356,12 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         switch ((modrm >> 3) & 7) {
         case 1: /* CMPXCHG8, CMPXCHG16 */
             if (mod == 3) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
 #ifdef TARGET_X86_64
             if (s->dflag == MO_64) {
                 if (!(s->cpuid_ext_features & CPUID_EXT_CX16)) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 gen_lea_modrm(env, s, modrm);
                 if ((s->prefix & PREFIX_LOCK) &&
@@ -5366,7 +5375,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             }
 #endif        
             if (!(s->cpuid_features & CPUID_CX8)) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             gen_lea_modrm(env, s, modrm);
             if ((s->prefix & PREFIX_LOCK) &&
@@ -5383,7 +5392,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             if (mod != 3 ||
                 (s->prefix & (PREFIX_LOCK | PREFIX_REPZ | PREFIX_REPNZ)) ||
                 !(s->cpuid_ext_features & CPUID_EXT_RDRAND)) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             if (tb_cflags(s->base.tb) & CF_USE_ICOUNT) {
                 gen_io_start();
@@ -5399,7 +5408,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             break;
 
         default:
-            goto illegal_op;
+            return DISAS_ILLEGAL;
         }
         break;
 
@@ -5416,13 +5425,15 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         gen_op_mov_reg_v(s, ot, (b & 7) | REX_B(s), s->T0);
         break;
     case 0x60: /* pusha */
-        if (CODE64(s))
-            goto illegal_op;
+        if (CODE64(s)) {
+            return DISAS_ILLEGAL;
+        }
         gen_pusha(s);
         break;
     case 0x61: /* popa */
-        if (CODE64(s))
-            goto illegal_op;
+        if (CODE64(s)) {
+            return DISAS_ILLEGAL;
+        }
         gen_popa(s);
         break;
     case 0x68: /* push Iv */
@@ -5467,8 +5478,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
     case 0x0e: /* push cs */
     case 0x16: /* push ss */
     case 0x1e: /* push ds */
-        if (CODE64(s))
-            goto illegal_op;
+        if (CODE64(s)) {
+            return DISAS_ILLEGAL;
+        }
         gen_op_movl_T0_seg(s, b >> 3);
         gen_push_v(s, s->T0);
         break;
@@ -5480,8 +5492,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
     case 0x07: /* pop es */
     case 0x17: /* pop ss */
     case 0x1f: /* pop ds */
-        if (CODE64(s))
-            goto illegal_op;
+        if (CODE64(s)) {
+            return DISAS_ILLEGAL;
+        }
         reg = b >> 3;
         ot = gen_pop_T0(s);
         gen_movl_seg_T0(s, reg);
@@ -5548,8 +5561,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
     case 0x8e: /* mov seg, Gv */
         modrm = x86_ldub_code(env, s);
         reg = (modrm >> 3) & 7;
-        if (reg >= 6 || reg == R_CS)
-            goto illegal_op;
+        if (reg >= 6 || reg == R_CS) {
+            return DISAS_ILLEGAL;
+        }
         gen_ldst_modrm(env, s, modrm, MO_16, OR_TMP0, 0);
         gen_movl_seg_T0(s, reg);
         /* Note that reg == R_SS in gen_movl_seg_T0 always sets is_jmp.  */
@@ -5567,8 +5581,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         modrm = x86_ldub_code(env, s);
         reg = (modrm >> 3) & 7;
         mod = (modrm >> 6) & 3;
-        if (reg >= 6)
-            goto illegal_op;
+        if (reg >= 6) {
+            return DISAS_ILLEGAL;
+        }
         gen_op_movl_T0_seg(s, reg);
         ot = mod == 3 ? s->dflag : MO_16;
         gen_ldst_modrm(env, s, modrm, ot, OR_TMP0, 1);
@@ -5627,8 +5642,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
     case 0x8d: /* lea */
         modrm = x86_ldub_code(env, s);
         mod = (modrm >> 6) & 3;
-        if (mod == 3)
-            goto illegal_op;
+        if (mod == 3) {
+            return DISAS_ILLEGAL;
+        }
         reg = ((modrm >> 3) & 7) | REX_R(s);
         {
             AddressParts a = gen_lea_modrm_0(env, s, modrm);
@@ -5750,8 +5766,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         modrm = x86_ldub_code(env, s);
         reg = ((modrm >> 3) & 7) | REX_R(s);
         mod = (modrm >> 6) & 3;
-        if (mod == 3)
-            goto illegal_op;
+        if (mod == 3) {
+            return DISAS_ILLEGAL;
+        }
         gen_lea_modrm(env, s, modrm);
         gen_op_ld_v(s, ot, s->T1, s->A0);
         gen_add_A0_im(s, 1 << ot);
@@ -6039,7 +6056,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 gen_helper_fpop(cpu_env);
                 break;
             default:
-                goto unknown_op;
+                return DISAS_UNKNOWN;
             }
         } else {
             /* register float ops */
@@ -6063,7 +6080,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                     gen_helper_fwait(cpu_env);
                     break;
                 default:
-                    goto unknown_op;
+                    return DISAS_UNKNOWN;
                 }
                 break;
             case 0x0c: /* grp d9/4 */
@@ -6082,7 +6099,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                     gen_helper_fxam_ST0(cpu_env);
                     break;
                 default:
-                    goto unknown_op;
+                    return DISAS_UNKNOWN;
                 }
                 break;
             case 0x0d: /* grp d9/5 */
@@ -6117,7 +6134,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                         gen_helper_fldz_ST0(cpu_env);
                         break;
                     default:
-                        goto unknown_op;
+                        return DISAS_UNKNOWN;
                     }
                 }
                 break;
@@ -6217,7 +6234,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                     gen_helper_fpop(cpu_env);
                     break;
                 default:
-                    goto unknown_op;
+                    return DISAS_UNKNOWN;
                 }
                 break;
             case 0x1c:
@@ -6235,12 +6252,12 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 case 4: /* fsetpm (287 only, just do nop here) */
                     break;
                 default:
-                    goto unknown_op;
+                    return DISAS_UNKNOWN;
                 }
                 break;
             case 0x1d: /* fucomi */
                 if (!(s->cpuid_features & CPUID_CMOV)) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 gen_update_cc_op(s);
                 gen_helper_fmov_FT0_STN(cpu_env, tcg_const_i32(opreg));
@@ -6249,7 +6266,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 break;
             case 0x1e: /* fcomi */
                 if (!(s->cpuid_features & CPUID_CMOV)) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 gen_update_cc_op(s);
                 gen_helper_fmov_FT0_STN(cpu_env, tcg_const_i32(opreg));
@@ -6287,7 +6304,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                     gen_helper_fpop(cpu_env);
                     break;
                 default:
-                    goto unknown_op;
+                    return DISAS_UNKNOWN;
                 }
                 break;
             case 0x38: /* ffreep sti, undocumented op */
@@ -6302,12 +6319,12 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                     gen_op_mov_reg_v(s, MO_16, R_EAX, s->T0);
                     break;
                 default:
-                    goto unknown_op;
+                    return DISAS_UNKNOWN;
                 }
                 break;
             case 0x3d: /* fucomip */
                 if (!(s->cpuid_features & CPUID_CMOV)) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 gen_update_cc_op(s);
                 gen_helper_fmov_FT0_STN(cpu_env, tcg_const_i32(opreg));
@@ -6317,7 +6334,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 break;
             case 0x3e: /* fcomip */
                 if (!(s->cpuid_features & CPUID_CMOV)) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 gen_update_cc_op(s);
                 gen_helper_fmov_FT0_STN(cpu_env, tcg_const_i32(opreg));
@@ -6338,7 +6355,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                     };
 
                     if (!(s->cpuid_features & CPUID_CMOV)) {
-                        goto illegal_op;
+                        return DISAS_ILLEGAL;
                     }
                     op1 = fcmov_cc[op & 3] | (((op >> 3) & 1) ^ 1);
                     l1 = gen_new_label();
@@ -6348,7 +6365,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 }
                 break;
             default:
-                goto unknown_op;
+                return DISAS_UNKNOWN;
             }
         }
         break;
@@ -6609,8 +6626,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         {
             unsigned int selector, offset;
 
-            if (CODE64(s))
-                goto illegal_op;
+            if (CODE64(s)) {
+                return DISAS_ILLEGAL;
+            }
             ot = s->dflag;
             offset = insn_get(env, s, ot);
             selector = insn_get(env, s, MO_16);
@@ -6638,8 +6656,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         {
             unsigned int selector, offset;
 
-            if (CODE64(s))
-                goto illegal_op;
+            if (CODE64(s)) {
+                return DISAS_ILLEGAL;
+            }
             ot = s->dflag;
             offset = insn_get(env, s, ot);
             selector = insn_get(env, s, MO_16);
@@ -6682,7 +6701,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         break;
     case 0x140 ... 0x14f: /* cmov Gv, Ev */
         if (!(s->cpuid_features & CPUID_CMOV)) {
-            goto illegal_op;
+            return DISAS_ILLEGAL;
         }
         ot = s->dflag;
         modrm = x86_ldub_code(env, s);
@@ -6761,8 +6780,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         }
         break;
     case 0x9e: /* sahf */
-        if (CODE64(s) && !(s->cpuid_ext3_features & CPUID_EXT3_LAHF_LM))
-            goto illegal_op;
+        if (CODE64(s) && !(s->cpuid_ext3_features & CPUID_EXT3_LAHF_LM)) {
+            return DISAS_ILLEGAL;
+        }
         gen_op_mov_v_reg(s, MO_8, s->T0, R_AH);
         gen_compute_eflags(s);
         tcg_gen_andi_tl(cpu_cc_src, cpu_cc_src, CC_O);
@@ -6770,8 +6790,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         tcg_gen_or_tl(cpu_cc_src, cpu_cc_src, s->T0);
         break;
     case 0x9f: /* lahf */
-        if (CODE64(s) && !(s->cpuid_ext3_features & CPUID_EXT3_LAHF_LM))
-            goto illegal_op;
+        if (CODE64(s) && !(s->cpuid_ext3_features & CPUID_EXT3_LAHF_LM)) {
+            return DISAS_ILLEGAL;
+        }
         gen_compute_eflags(s);
         /* Note: gen_compute_eflags() only gives the condition codes */
         tcg_gen_ori_tl(s->T0, cpu_cc_src, 0x02);
@@ -6818,8 +6839,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         /* load shift */
         val = x86_ldub_code(env, s);
         tcg_gen_movi_tl(s->T1, val);
-        if (op < 4)
-            goto unknown_op;
+        if (op < 4) {
+            return DISAS_UNKNOWN;
+        }
         op -= 4;
         goto bt_op;
     case 0x1a3: /* bt Gv, Ev */
@@ -6990,36 +7012,41 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         /************************/
         /* bcd */
     case 0x27: /* daa */
-        if (CODE64(s))
-            goto illegal_op;
+        if (CODE64(s)) {
+            return DISAS_ILLEGAL;
+        }
         gen_update_cc_op(s);
         gen_helper_daa(cpu_env);
         set_cc_op(s, CC_OP_EFLAGS);
         break;
     case 0x2f: /* das */
-        if (CODE64(s))
-            goto illegal_op;
+        if (CODE64(s)) {
+            return DISAS_ILLEGAL;
+        }
         gen_update_cc_op(s);
         gen_helper_das(cpu_env);
         set_cc_op(s, CC_OP_EFLAGS);
         break;
     case 0x37: /* aaa */
-        if (CODE64(s))
-            goto illegal_op;
+        if (CODE64(s)) {
+            return DISAS_ILLEGAL;
+        }
         gen_update_cc_op(s);
         gen_helper_aaa(cpu_env);
         set_cc_op(s, CC_OP_EFLAGS);
         break;
     case 0x3f: /* aas */
-        if (CODE64(s))
-            goto illegal_op;
+        if (CODE64(s)) {
+            return DISAS_ILLEGAL;
+        }
         gen_update_cc_op(s);
         gen_helper_aas(cpu_env);
         set_cc_op(s, CC_OP_EFLAGS);
         break;
     case 0xd4: /* aam */
-        if (CODE64(s))
-            goto illegal_op;
+        if (CODE64(s)) {
+            return DISAS_ILLEGAL;
+        }
         val = x86_ldub_code(env, s);
         if (val == 0) {
             gen_exception(s, EXCP00_DIVZ);
@@ -7029,8 +7056,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         }
         break;
     case 0xd5: /* aad */
-        if (CODE64(s))
-            goto illegal_op;
+        if (CODE64(s)) {
+            return DISAS_ILLEGAL;
+        }
         val = x86_ldub_code(env, s);
         gen_helper_aad(cpu_env, tcg_const_i32(val));
         set_cc_op(s, CC_OP_LOGICB);
@@ -7040,7 +7068,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
     case 0x90: /* nop */
         /* XXX: correct lock test for all insn */
         if (s->prefix & PREFIX_LOCK) {
-            goto illegal_op;
+            return DISAS_ILLEGAL;
         }
         /* If REX_B is set, then this is xchg eax, r8d, not a nop.  */
         if (REX_B(s)) {
@@ -7073,8 +7101,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         }
         break;
     case 0xce: /* into */
-        if (CODE64(s))
-            goto illegal_op;
+        if (CODE64(s)) {
+            return DISAS_ILLEGAL;
+        }
         gen_update_cc_op(s);
         gen_jmp_im(s, pc_start - s->cs_base);
         gen_helper_into(cpu_env, tcg_const_i32(s->pc - pc_start));
@@ -7111,14 +7140,16 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         }
         break;
     case 0x62: /* bound */
-        if (CODE64(s))
-            goto illegal_op;
+        if (CODE64(s)) {
+            return DISAS_ILLEGAL;
+        }
         ot = s->dflag;
         modrm = x86_ldub_code(env, s);
         reg = (modrm >> 3) & 7;
         mod = (modrm >> 6) & 3;
-        if (mod == 3)
-            goto illegal_op;
+        if (mod == 3) {
+            return DISAS_ILLEGAL;
+        }
         gen_op_mov_v_reg(s, ot, s->T0, reg);
         gen_lea_modrm(env, s, modrm);
         tcg_gen_trunc_tl_i32(s->tmp2_i32, s->T0);
@@ -7145,8 +7176,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         }
         break;
     case 0xd6: /* salc */
-        if (CODE64(s))
-            goto illegal_op;
+        if (CODE64(s)) {
+            return DISAS_ILLEGAL;
+        }
         gen_compute_eflags_c(s, s->T0);
         tcg_gen_neg_tl(s->T0, s->T0);
         gen_op_mov_reg_v(s, MO_8, R_EAX, s->T0);
@@ -7229,8 +7261,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         break;
     case 0x134: /* sysenter */
         /* For Intel SYSENTER is valid on 64-bit */
-        if (CODE64(s) && env->cpuid_vendor1 != CPUID_VENDOR_INTEL_1)
-            goto illegal_op;
+        if (CODE64(s) && env->cpuid_vendor1 != CPUID_VENDOR_INTEL_1) {
+            return DISAS_ILLEGAL;
+        }
         if (!s->pe) {
             gen_exception(s, EXCP0D_GPF);
         } else {
@@ -7240,8 +7273,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         break;
     case 0x135: /* sysexit */
         /* For Intel SYSEXIT is valid on 64-bit */
-        if (CODE64(s) && env->cpuid_vendor1 != CPUID_VENDOR_INTEL_1)
-            goto illegal_op;
+        if (CODE64(s) && env->cpuid_vendor1 != CPUID_VENDOR_INTEL_1) {
+            return DISAS_ILLEGAL;
+        }
         if (!s->pe) {
             gen_exception(s, EXCP0D_GPF);
         } else {
@@ -7298,8 +7332,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         op = (modrm >> 3) & 7;
         switch(op) {
         case 0: /* sldt */
-            if (!s->pe || s->vm86)
-                goto illegal_op;
+            if (!s->pe || s->vm86) {
+                return DISAS_ILLEGAL;
+            }
             gen_svm_check_intercept(s, pc_start, SVM_EXIT_LDTR_READ);
             tcg_gen_ld32u_tl(s->T0, cpu_env,
                              offsetof(CPUX86State, ldt.selector));
@@ -7307,8 +7342,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             gen_ldst_modrm(env, s, modrm, ot, OR_TMP0, 1);
             break;
         case 2: /* lldt */
-            if (!s->pe || s->vm86)
-                goto illegal_op;
+            if (!s->pe || s->vm86) {
+                return DISAS_ILLEGAL;
+            }
             if (s->cpl != 0) {
                 gen_exception(s, EXCP0D_GPF);
             } else {
@@ -7319,8 +7355,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             }
             break;
         case 1: /* str */
-            if (!s->pe || s->vm86)
-                goto illegal_op;
+            if (!s->pe || s->vm86) {
+                return DISAS_ILLEGAL;
+            }
             gen_svm_check_intercept(s, pc_start, SVM_EXIT_TR_READ);
             tcg_gen_ld32u_tl(s->T0, cpu_env,
                              offsetof(CPUX86State, tr.selector));
@@ -7328,8 +7365,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             gen_ldst_modrm(env, s, modrm, ot, OR_TMP0, 1);
             break;
         case 3: /* ltr */
-            if (!s->pe || s->vm86)
-                goto illegal_op;
+            if (!s->pe || s->vm86) {
+                return DISAS_ILLEGAL;
+            }
             if (s->cpl != 0) {
                 gen_exception(s, EXCP0D_GPF);
             } else {
@@ -7341,8 +7379,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             break;
         case 4: /* verr */
         case 5: /* verw */
-            if (!s->pe || s->vm86)
-                goto illegal_op;
+            if (!s->pe || s->vm86) {
+                return DISAS_ILLEGAL;
+            }
             gen_ldst_modrm(env, s, modrm, MO_16, OR_TMP0, 0);
             gen_update_cc_op(s);
             if (op == 4) {
@@ -7353,7 +7392,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             set_cc_op(s, CC_OP_EFLAGS);
             break;
         default:
-            goto unknown_op;
+            return DISAS_UNKNOWN;
         }
         break;
 
@@ -7376,7 +7415,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
 
         case 0xc8: /* monitor */
             if (!(s->cpuid_ext_features & CPUID_EXT_MONITOR) || s->cpl != 0) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             gen_update_cc_op(s);
             gen_jmp_im(s, pc_start - s->cs_base);
@@ -7388,7 +7427,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
 
         case 0xc9: /* mwait */
             if (!(s->cpuid_ext_features & CPUID_EXT_MONITOR) || s->cpl != 0) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             gen_update_cc_op(s);
             gen_jmp_im(s, pc_start - s->cs_base);
@@ -7399,7 +7438,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         case 0xca: /* clac */
             if (!(s->cpuid_7_0_ebx_features & CPUID_7_0_EBX_SMAP)
                 || s->cpl != 0) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             gen_helper_clac(cpu_env);
             gen_jmp_im(s, s->pc - s->cs_base);
@@ -7409,7 +7448,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         case 0xcb: /* stac */
             if (!(s->cpuid_7_0_ebx_features & CPUID_7_0_EBX_SMAP)
                 || s->cpl != 0) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             gen_helper_stac(cpu_env);
             gen_jmp_im(s, s->pc - s->cs_base);
@@ -7433,7 +7472,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             if ((s->cpuid_ext_features & CPUID_EXT_XSAVE) == 0
                 || (s->prefix & (PREFIX_LOCK | PREFIX_DATA
                                  | PREFIX_REPZ | PREFIX_REPNZ))) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             tcg_gen_trunc_tl_i32(s->tmp2_i32, cpu_regs[R_ECX]);
             gen_helper_xgetbv(s->tmp1_i64, cpu_env, s->tmp2_i32);
@@ -7444,7 +7483,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             if ((s->cpuid_ext_features & CPUID_EXT_XSAVE) == 0
                 || (s->prefix & (PREFIX_LOCK | PREFIX_DATA
                                  | PREFIX_REPZ | PREFIX_REPNZ))) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             if (s->cpl != 0) {
                 gen_exception(s, EXCP0D_GPF);
@@ -7461,7 +7500,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
 
         case 0xd8: /* VMRUN */
             if (!(s->flags & HF_SVME_MASK) || !s->pe) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             if (s->cpl != 0) {
                 gen_exception(s, EXCP0D_GPF);
@@ -7477,7 +7516,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
 
         case 0xd9: /* VMMCALL */
             if (!(s->flags & HF_SVME_MASK)) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             gen_update_cc_op(s);
             gen_jmp_im(s, pc_start - s->cs_base);
@@ -7486,7 +7525,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
 
         case 0xda: /* VMLOAD */
             if (!(s->flags & HF_SVME_MASK) || !s->pe) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             if (s->cpl != 0) {
                 gen_exception(s, EXCP0D_GPF);
@@ -7499,7 +7538,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
 
         case 0xdb: /* VMSAVE */
             if (!(s->flags & HF_SVME_MASK) || !s->pe) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             if (s->cpl != 0) {
                 gen_exception(s, EXCP0D_GPF);
@@ -7514,7 +7553,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             if ((!(s->flags & HF_SVME_MASK)
                    && !(s->cpuid_ext3_features & CPUID_EXT3_SKINIT))
                 || !s->pe) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             if (s->cpl != 0) {
                 gen_exception(s, EXCP0D_GPF);
@@ -7528,7 +7567,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
 
         case 0xdd: /* CLGI */
             if (!(s->flags & HF_SVME_MASK) || !s->pe) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             if (s->cpl != 0) {
                 gen_exception(s, EXCP0D_GPF);
@@ -7543,7 +7582,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             if ((!(s->flags & HF_SVME_MASK)
                  && !(s->cpuid_ext3_features & CPUID_EXT3_SKINIT))
                 || !s->pe) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             gen_update_cc_op(s);
             gen_jmp_im(s, pc_start - s->cs_base);
@@ -7552,7 +7591,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
 
         case 0xdf: /* INVLPGA */
             if (!(s->flags & HF_SVME_MASK) || !s->pe) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             if (s->cpl != 0) {
                 gen_exception(s, EXCP0D_GPF);
@@ -7610,7 +7649,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             break;
         case 0xee: /* rdpkru */
             if (s->prefix & PREFIX_LOCK) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             tcg_gen_trunc_tl_i32(s->tmp2_i32, cpu_regs[R_ECX]);
             gen_helper_rdpkru(s->tmp1_i64, cpu_env, s->tmp2_i32);
@@ -7618,7 +7657,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             break;
         case 0xef: /* wrpkru */
             if (s->prefix & PREFIX_LOCK) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             tcg_gen_concat_tl_i64(s->tmp1_i64, cpu_regs[R_EAX],
                                   cpu_regs[R_EDX]);
@@ -7665,11 +7704,11 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 break;
             }
 #endif
-            goto illegal_op;
+            return DISAS_ILLEGAL;
 
         case 0xf9: /* rdtscp */
             if (!(s->cpuid_ext2_features & CPUID_EXT2_RDTSCP)) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             gen_update_cc_op(s);
             gen_jmp_im(s, pc_start - s->cs_base);
@@ -7684,7 +7723,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             break;
 
         default:
-            goto unknown_op;
+            return DISAS_UNKNOWN;
         }
         break;
 
@@ -7727,8 +7766,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             TCGLabel *label1;
             TCGv t0, t1, t2, a0;
 
-            if (!s->pe || s->vm86)
-                goto illegal_op;
+            if (!s->pe || s->vm86) {
+                return DISAS_ILLEGAL;
+            }
             t0 = tcg_temp_local_new();
             t1 = tcg_temp_local_new();
             t2 = tcg_temp_local_new();
@@ -7775,8 +7815,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         {
             TCGLabel *label1;
             TCGv t0;
-            if (!s->pe || s->vm86)
-                goto illegal_op;
+            if (!s->pe || s->vm86) {
+                return DISAS_ILLEGAL;
+            }
             ot = s->dflag != MO_16 ? MO_32 : MO_16;
             modrm = x86_ldub_code(env, s);
             reg = ((modrm >> 3) & 7) | REX_R(s);
@@ -7806,8 +7847,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         case 1: /* prefetchnt0 */
         case 2: /* prefetchnt0 */
         case 3: /* prefetchnt0 */
-            if (mod == 3)
-                goto illegal_op;
+            if (mod == 3) {
+                return DISAS_ILLEGAL;
+            }
             gen_nop_modrm(env, s, modrm);
             /* nothing more to do */
             break;
@@ -7826,7 +7868,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 if (reg >= 4
                     || (s->prefix & PREFIX_LOCK)
                     || s->aflag == MO_16) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 gen_bndck(env, s, modrm, TCG_COND_LTU, cpu_bndl[reg]);
             } else if (s->prefix & PREFIX_REPNZ) {
@@ -7834,7 +7876,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 if (reg >= 4
                     || (s->prefix & PREFIX_LOCK)
                     || s->aflag == MO_16) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 TCGv_i64 notu = tcg_temp_new_i64();
                 tcg_gen_not_i64(notu, cpu_bndu[reg]);
@@ -7843,12 +7885,12 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             } else if (s->prefix & PREFIX_DATA) {
                 /* bndmov -- from reg/mem */
                 if (reg >= 4 || s->aflag == MO_16) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 if (mod == 3) {
                     int reg2 = (modrm & 7) | REX_B(s);
                     if (reg2 >= 4 || (s->prefix & PREFIX_LOCK)) {
-                        goto illegal_op;
+                        return DISAS_ILLEGAL;
                     }
                     if (s->flags & HF_MPX_IU_MASK) {
                         tcg_gen_mov_i64(cpu_bndl[reg], cpu_bndl[reg2]);
@@ -7879,7 +7921,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                     || (s->prefix & PREFIX_LOCK)
                     || s->aflag == MO_16
                     || a.base < -1) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 if (a.base >= 0) {
                     tcg_gen_addi_tl(s->A0, cpu_regs[a.base], a.disp);
@@ -7916,7 +7958,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 if (reg >= 4
                     || (s->prefix & PREFIX_LOCK)
                     || s->aflag == MO_16) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 AddressParts a = gen_lea_modrm_0(env, s, modrm);
                 if (a.base >= 0) {
@@ -7929,7 +7971,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                     tcg_gen_movi_i64(cpu_bndl[reg], 0);
                 } else {
                     /* rip-relative generates #ud */
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 tcg_gen_not_tl(s->A0, gen_lea_modrm_1(s, a));
                 if (!CODE64(s)) {
@@ -7944,18 +7986,18 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 if (reg >= 4
                     || (s->prefix & PREFIX_LOCK)
                     || s->aflag == MO_16) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 gen_bndck(env, s, modrm, TCG_COND_GTU, cpu_bndu[reg]);
             } else if (s->prefix & PREFIX_DATA) {
                 /* bndmov -- to reg/mem */
                 if (reg >= 4 || s->aflag == MO_16) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 if (mod == 3) {
                     int reg2 = (modrm & 7) | REX_B(s);
                     if (reg2 >= 4 || (s->prefix & PREFIX_LOCK)) {
-                        goto illegal_op;
+                        return DISAS_ILLEGAL;
                     }
                     if (s->flags & HF_MPX_IU_MASK) {
                         tcg_gen_mov_i64(cpu_bndl[reg2], cpu_bndl[reg]);
@@ -7984,7 +8026,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                     || (s->prefix & PREFIX_LOCK)
                     || s->aflag == MO_16
                     || a.base < -1) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 if (a.base >= 0) {
                     tcg_gen_addi_tl(s->A0, cpu_regs[a.base], a.disp);
@@ -8065,7 +8107,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 }
                 break;
             default:
-                goto unknown_op;
+                return DISAS_UNKNOWN;
             }
         }
         break;
@@ -8087,7 +8129,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             else
                 ot = MO_32;
             if (reg >= 8) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             if (b & 2) {
                 gen_svm_check_intercept(s, pc_start, SVM_EXIT_WRITE_DR0 + reg);
@@ -8117,13 +8159,15 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         break;
     /* MMX/3DNow!/SSE/SSE2/SSE3/SSSE3/SSE4 support */
     case 0x1c3: /* MOVNTI reg, mem */
-        if (!(s->cpuid_features & CPUID_SSE2))
-            goto illegal_op;
+        if (!(s->cpuid_features & CPUID_SSE2)) {
+            return DISAS_ILLEGAL;
+        }
         ot = mo_64_32(s->dflag);
         modrm = x86_ldub_code(env, s);
         mod = (modrm >> 6) & 3;
-        if (mod == 3)
-            goto illegal_op;
+        if (mod == 3) {
+            return DISAS_ILLEGAL;
+        }
         reg = ((modrm >> 3) & 7) | REX_R(s);
         /* generate a generic store */
         gen_ldst_modrm(env, s, modrm, ot, reg, 1);
@@ -8134,7 +8178,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         CASE_MODRM_MEM_OP(0): /* fxsave */
             if (!(s->cpuid_features & CPUID_FXSR)
                 || (s->prefix & PREFIX_LOCK)) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             if ((s->flags & HF_EM_MASK) || (s->flags & HF_TS_MASK)) {
                 gen_exception(s, EXCP07_PREX);
@@ -8147,7 +8191,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         CASE_MODRM_MEM_OP(1): /* fxrstor */
             if (!(s->cpuid_features & CPUID_FXSR)
                 || (s->prefix & PREFIX_LOCK)) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             if ((s->flags & HF_EM_MASK) || (s->flags & HF_TS_MASK)) {
                 gen_exception(s, EXCP07_PREX);
@@ -8159,7 +8203,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
 
         CASE_MODRM_MEM_OP(2): /* ldmxcsr */
             if ((s->flags & HF_EM_MASK) || !(s->flags & HF_OSFXSR_MASK)) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             if (s->flags & HF_TS_MASK) {
                 gen_exception(s, EXCP07_PREX);
@@ -8172,7 +8216,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
 
         CASE_MODRM_MEM_OP(3): /* stmxcsr */
             if ((s->flags & HF_EM_MASK) || !(s->flags & HF_OSFXSR_MASK)) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             if (s->flags & HF_TS_MASK) {
                 gen_exception(s, EXCP07_PREX);
@@ -8187,7 +8231,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             if ((s->cpuid_ext_features & CPUID_EXT_XSAVE) == 0
                 || (s->prefix & (PREFIX_LOCK | PREFIX_DATA
                                    | PREFIX_REPZ | PREFIX_REPNZ))) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             gen_lea_modrm(env, s, modrm);
             tcg_gen_concat_tl_i64(s->tmp1_i64, cpu_regs[R_EAX],
@@ -8199,7 +8243,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             if ((s->cpuid_ext_features & CPUID_EXT_XSAVE) == 0
                 || (s->prefix & (PREFIX_LOCK | PREFIX_DATA
                                    | PREFIX_REPZ | PREFIX_REPNZ))) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             gen_lea_modrm(env, s, modrm);
             tcg_gen_concat_tl_i64(s->tmp1_i64, cpu_regs[R_EAX],
@@ -8214,12 +8258,12 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
 
         CASE_MODRM_MEM_OP(6): /* xsaveopt / clwb */
             if (s->prefix & PREFIX_LOCK) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             if (s->prefix & PREFIX_DATA) {
                 /* clwb */
                 if (!(s->cpuid_7_0_ebx_features & CPUID_7_0_EBX_CLWB)) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 gen_nop_modrm(env, s, modrm);
             } else {
@@ -8227,7 +8271,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 if ((s->cpuid_ext_features & CPUID_EXT_XSAVE) == 0
                     || (s->cpuid_xsave_features & CPUID_XSAVE_XSAVEOPT) == 0
                     || (s->prefix & (PREFIX_REPZ | PREFIX_REPNZ))) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 gen_lea_modrm(env, s, modrm);
                 tcg_gen_concat_tl_i64(s->tmp1_i64, cpu_regs[R_EAX],
@@ -8238,18 +8282,18 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
 
         CASE_MODRM_MEM_OP(7): /* clflush / clflushopt */
             if (s->prefix & PREFIX_LOCK) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             if (s->prefix & PREFIX_DATA) {
                 /* clflushopt */
                 if (!(s->cpuid_7_0_ebx_features & CPUID_7_0_EBX_CLFLUSHOPT)) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
             } else {
                 /* clflush */
                 if ((s->prefix & (PREFIX_REPZ | PREFIX_REPNZ))
                     || !(s->cpuid_features & CPUID_CLFLUSH)) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
             }
             gen_nop_modrm(env, s, modrm);
@@ -8287,14 +8331,14 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 }
                 break;
             }
-            goto unknown_op;
+            return DISAS_UNKNOWN;
 
         case 0xf8: /* sfence / pcommit */
             if (s->prefix & PREFIX_DATA) {
                 /* pcommit */
                 if (!(s->cpuid_7_0_ebx_features & CPUID_7_0_EBX_PCOMMIT)
                     || (s->prefix & PREFIX_LOCK)) {
-                    goto illegal_op;
+                    return DISAS_ILLEGAL;
                 }
                 break;
             }
@@ -8302,27 +8346,27 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         case 0xf9 ... 0xff: /* sfence */
             if (!(s->cpuid_features & CPUID_SSE)
                 || (s->prefix & PREFIX_LOCK)) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             tcg_gen_mb(TCG_MO_ST_ST | TCG_BAR_SC);
             break;
         case 0xe8 ... 0xef: /* lfence */
             if (!(s->cpuid_features & CPUID_SSE)
                 || (s->prefix & PREFIX_LOCK)) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             tcg_gen_mb(TCG_MO_LD_LD | TCG_BAR_SC);
             break;
         case 0xf0 ... 0xf7: /* mfence */
             if (!(s->cpuid_features & CPUID_SSE2)
                 || (s->prefix & PREFIX_LOCK)) {
-                goto illegal_op;
+                return DISAS_ILLEGAL;
             }
             tcg_gen_mb(TCG_MO_ALL | TCG_BAR_SC);
             break;
 
         default:
-            goto unknown_op;
+            return DISAS_UNKNOWN;
         }
         break;
 
@@ -8330,13 +8374,14 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         modrm = x86_ldub_code(env, s);
         mod = (modrm >> 6) & 3;
         if (mod == 3)
-            goto illegal_op;
+            return DISAS_ILLEGAL;
         gen_nop_modrm(env, s, modrm);
         break;
     case 0x1aa: /* rsm */
         gen_svm_check_intercept(s, pc_start, SVM_EXIT_RSM);
-        if (!(s->flags & HF_SMM_MASK))
-            goto illegal_op;
+        if (!(s->flags & HF_SMM_MASK)) {
+            return DISAS_ILLEGAL;
+        }
         gen_update_cc_op(s);
         gen_jmp_im(s, s->pc - s->cs_base);
         gen_helper_rsm(cpu_env);
@@ -8344,10 +8389,12 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         break;
     case 0x1b8: /* SSE4.2 popcnt */
         if ((s->prefix & (PREFIX_REPZ | PREFIX_LOCK | PREFIX_REPNZ)) !=
-            PREFIX_REPZ)
-            goto illegal_op;
-        if (!(s->cpuid_ext_features & CPUID_EXT_POPCNT))
-            goto illegal_op;
+            PREFIX_REPZ) {
+            return DISAS_ILLEGAL;
+        }
+        if (!(s->cpuid_ext_features & CPUID_EXT_POPCNT)) {
+            return DISAS_ILLEGAL;
+        }
 
         modrm = x86_ldub_code(env, s);
         reg = ((modrm >> 3) & 7) | REX_R(s);
@@ -8380,13 +8427,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
     case 0x1d0 ... 0x1fe:
         return gen_sse(env, s, b);
     default:
-        goto unknown_op;
+        return DISAS_UNKNOWN;
     }
     return s->base.is_jmp;
- illegal_op:
-    return DISAS_ILLEGAL;
- unknown_op:
-    return DISAS_UNKNOWN;
 }
 
 void tcg_x86_init(void)
