@@ -7152,7 +7152,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
     case 0xe2: /* loop */
     case 0xe3: /* jecxz */
         {
-            TCGLabel *l1, *l2, *l3;
+            TCGLabel *l1, *l3;
 
             tval = (int8_t)insn_get(env, s, MO_8);
             next_eip = s->pc - s->cs_base;
@@ -7162,7 +7162,6 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             }
 
             l1 = gen_new_label();
-            l2 = gen_new_label();
             l3 = gen_new_label();
             b &= 3;
             switch(b) {
@@ -7182,14 +7181,25 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 break;
             }
 
-            gen_set_label(l3);
-            gen_jmp_im(s, next_eip);
-            tcg_gen_br(l2);
+            if (s->jmp_opt) {
+                gen_set_label(l3);
+                gen_goto_tb(s, 0, next_eip);
 
-            gen_set_label(l1);
-            gen_jmp_im(s, tval);
-            gen_set_label(l2);
-            return DISAS_EOB;
+                gen_set_label(l1);
+                gen_goto_tb(s, 1, tval);
+                return DISAS_NORETURN;
+            } else {
+                TCGLabel *l2 = gen_new_label();
+
+                gen_set_label(l3);
+                gen_jmp_im(s, next_eip);
+                tcg_gen_br(l2);
+
+                gen_set_label(l1);
+                gen_jmp_im(s, tval);
+                gen_set_label(l2);
+                return DISAS_EOB;
+            }
         }
         break;
     case 0x130: /* wrmsr */
