@@ -36,6 +36,7 @@
 #define DISAS_ILLEGAL    DISAS_TARGET_1
 #define DISAS_PREX       DISAS_TARGET_2
 #define DISAS_GPF        DISAS_TARGET_3
+#define DISAS_EOB        DISAS_TARGET_4
 
 #define PREFIX_REPZ   0x01
 #define PREFIX_REPNZ  0x02
@@ -6568,8 +6569,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             /* add stack offset */
             gen_stack_update(s, val + (2 << s->dflag));
         }
-        gen_eob(s);
-        break;
+        return DISAS_EOB;
     case 0xcb: /* lret */
         val = 0;
         goto do_lret;
@@ -6591,8 +6591,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                                       tcg_const_i32(s->pc - s->cs_base));
             set_cc_op(s, CC_OP_EFLAGS);
         }
-        gen_eob(s);
-        break;
+        return DISAS_EOB;
     case 0xe8: /* call im */
         {
             if (s->dflag != MO_16) {
@@ -7215,7 +7214,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             gen_set_label(l1);
             gen_jmp_im(s, tval);
             gen_set_label(l2);
-            gen_eob(s);
+            return DISAS_EOB;
         }
         break;
     case 0x130: /* wrmsr */
@@ -7256,11 +7255,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         }
         if (!s->pe) {
             return DISAS_GPF;
-        } else {
-            gen_helper_sysenter(cpu_env);
-            gen_eob(s);
         }
-        break;
+        gen_helper_sysenter(cpu_env);
+        return DISAS_EOB;
     case 0x135: /* sysexit */
         /* For Intel SYSEXIT is valid on 64-bit */
         if (CODE64(s) && env->cpuid_vendor1 != CPUID_VENDOR_INTEL_1) {
@@ -7268,11 +7265,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         }
         if (!s->pe) {
             return DISAS_GPF;
-        } else {
-            gen_helper_sysexit(cpu_env, tcg_const_i32(s->dflag - 1));
-            gen_eob(s);
         }
-        break;
+        gen_helper_sysexit(cpu_env, tcg_const_i32(s->dflag - 1));
+        return DISAS_EOB;
 #ifdef TARGET_X86_64
     case 0x105: /* syscall */
         /* XXX: is it usable in real mode ? */
@@ -7422,8 +7417,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             gen_update_cc_op(s);
             gen_jmp_im(s, pc_start - s->cs_base);
             gen_helper_mwait(cpu_env, tcg_const_i32(s->pc - pc_start));
-            gen_eob(s);
-            break;
+            return DISAS_EOB;
 
         case 0xca: /* clac */
             if (!(s->cpuid_7_0_ebx_features & CPUID_7_0_EBX_SMAP)
@@ -8345,8 +8339,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         gen_update_cc_op(s);
         gen_jmp_im(s, s->pc - s->cs_base);
         gen_helper_rsm(cpu_env);
-        gen_eob(s);
-        break;
+        return DISAS_EOB;
     case 0x1b8: /* SSE4.2 popcnt */
         if ((s->prefix & (PREFIX_REPZ | PREFIX_LOCK | PREFIX_REPNZ)) !=
             PREFIX_REPZ) {
@@ -8618,6 +8611,8 @@ static void i386_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
     switch (dc->base.is_jmp) {
     case DISAS_TOO_MANY:
         gen_jmp_im(dc, dc->base.pc_next - dc->cs_base);
+        /* fall through */
+    case DISAS_EOB:
         gen_eob(dc);
         break;
     case DISAS_NORETURN:
