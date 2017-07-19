@@ -158,7 +158,7 @@ typedef struct DisasContext {
 } DisasContext;
 
 static void gen_eob(DisasContext *s);
-static void gen_jr(DisasContext *s, TCGv dest);
+static DisasJumpType gen_jr(DisasContext *s);
 static void gen_jmp(DisasContext *s, target_ulong eip);
 static void gen_jmp_tb(DisasContext *s, target_ulong eip, int tb_num);
 static void gen_op(DisasContext *s1, int op, TCGMemOp ot, int d);
@@ -2246,7 +2246,7 @@ static inline void gen_goto_tb(DisasContext *s, int tb_num, target_ulong eip)
     } else {
         /* jump to another page */
         gen_jmp_im(s, eip);
-        gen_jr(s, s->tmp0);
+        s->base.is_jmp = gen_jr(s);
     }
 }
 
@@ -2567,7 +2567,7 @@ static void gen_bnd_jmp(DisasContext *s)
    If INHIBIT, set HF_INHIBIT_IRQ_MASK if it isn't already set.
    If RECHECK_TF, emit a rechecking helper for #DB, ignoring the state of
    S->TF.  This is used by the syscall/sysret insns.  */
-static void
+static DisasJumpType
 do_gen_eob_worker(DisasContext *s, bool inhibit, bool recheck_tf, bool jr)
 {
     gen_update_cc_op(s);
@@ -2594,7 +2594,7 @@ do_gen_eob_worker(DisasContext *s, bool inhibit, bool recheck_tf, bool jr)
     } else {
         tcg_gen_exit_tb(NULL, 0);
     }
-    s->base.is_jmp = DISAS_NORETURN;
+    return s->base.is_jmp = DISAS_NORETURN;
 }
 
 static inline void
@@ -2610,9 +2610,9 @@ static void gen_eob(DisasContext *s)
 }
 
 /* Jump to register */
-static void gen_jr(DisasContext *s, TCGv dest)
+static DisasJumpType gen_jr(DisasContext *s)
 {
-    do_gen_eob_worker(s, false, false, true);
+    return do_gen_eob_worker(s, false, false, true);
 }
 
 /* generate a jump to eip. No segment change must happen before as a
@@ -5063,8 +5063,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             gen_push_v(s, s->T1);
             gen_op_jmp_v(s->T0);
             gen_bnd_jmp(s);
-            gen_jr(s, s->T0);
-            break;
+            return gen_jr(s);
         case 3: /* lcall Ev */
             gen_op_ld_v(s, ot, s->T1, s->A0);
             gen_add_A0_im(s, 1 << ot);
@@ -5081,17 +5080,14 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                                       tcg_const_i32(s->dflag - 1),
                                       tcg_const_i32(s->pc - s->cs_base));
             }
-            tcg_gen_ld_tl(s->tmp4, cpu_env, offsetof(CPUX86State, eip));
-            gen_jr(s, s->tmp4);
-            break;
+            return gen_jr(s);
         case 4: /* jmp Ev */
             if (s->dflag == MO_16) {
                 tcg_gen_ext16u_tl(s->T0, s->T0);
             }
             gen_op_jmp_v(s->T0);
             gen_bnd_jmp(s);
-            gen_jr(s, s->T0);
-            break;
+            return gen_jr(s);
         case 5: /* ljmp Ev */
             gen_op_ld_v(s, ot, s->T1, s->A0);
             gen_add_A0_im(s, 1 << ot);
@@ -5105,9 +5101,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 gen_op_movl_seg_T0_vm(s, R_CS);
                 gen_op_jmp_v(s->T1);
             }
-            tcg_gen_ld_tl(s->tmp4, cpu_env, offsetof(CPUX86State, eip));
-            gen_jr(s, s->tmp4);
-            break;
+            return gen_jr(s);
         case 6: /* push Ev */
             gen_push_v(s, s->T0);
             break;
@@ -6511,16 +6505,14 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         /* Note that gen_pop_T0 uses a zero-extending load.  */
         gen_op_jmp_v(s->T0);
         gen_bnd_jmp(s);
-        gen_jr(s, s->T0);
-        break;
+        return gen_jr(s);
     case 0xc3: /* ret */
         ot = gen_pop_T0(s);
         gen_pop_update(s, ot);
         /* Note that gen_pop_T0 uses a zero-extending load.  */
         gen_op_jmp_v(s->T0);
         gen_bnd_jmp(s);
-        gen_jr(s, s->T0);
-        break;
+        return gen_jr(s);
     case 0xca: /* lret im */
         val = x86_ldsw_code(env, s);
     do_lret:
