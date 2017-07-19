@@ -3043,7 +3043,7 @@ static const struct SSEOpHelper_eppi sse_op_table7[256] = {
     [0xdf] = AESNI_OP(aeskeygenassist),
 };
 
-static void gen_sse(CPUX86State *env, DisasContext *s, int b)
+static DisasJumpType gen_sse(CPUX86State *env, DisasContext *s, int b)
 {
     int b1, op1_offset, op2_offset, is_xmm, val;
     int modrm, mod, rm, reg;
@@ -3079,12 +3079,11 @@ static void gen_sse(CPUX86State *env, DisasContext *s, int b)
     /* simple MMX/SSE operation */
     if (s->flags & HF_TS_MASK) {
         gen_exception(s, EXCP07_PREX);
-        return;
+        return DISAS_NORETURN;
     }
     if (s->flags & HF_EM_MASK) {
     illegal_op:
-        gen_illegal_opcode(s);
-        return;
+        return DISAS_ILLEGAL;
     }
     if (is_xmm
         && !(s->flags & HF_OSFXSR_MASK)
@@ -3098,12 +3097,12 @@ static void gen_sse(CPUX86State *env, DisasContext *s, int b)
         }
         /* femms */
         gen_helper_emms(cpu_env);
-        return;
+        return DISAS_NEXT;
     }
     if (b == 0x77) {
         /* emms */
         gen_helper_emms(cpu_env);
-        return;
+        return DISAS_NEXT;
     }
     /* prepare MMX state (XXX: optimize by storing fptt and fptags in
        the static cpu state) */
@@ -3747,7 +3746,7 @@ static void gen_sse(CPUX86State *env, DisasContext *s, int b)
                         break;
                     case 0x2a:            /* movntqda */
                         gen_ldo_env_A0(s, op1_offset);
-                        return;
+                        return DISAS_NEXT;
                     default:
                         gen_ldo_env_A0(s, op2_offset);
                     }
@@ -4282,7 +4281,7 @@ static void gen_sse(CPUX86State *env, DisasContext *s, int b)
                     }
                     break;
                 }
-                return;
+                return DISAS_NEXT;
             }
 
             if (b1) {
@@ -4353,8 +4352,7 @@ static void gen_sse(CPUX86State *env, DisasContext *s, int b)
 
         default:
         unknown_op:
-            gen_unknown_opcode(env, s);
-            return;
+            return DISAS_UNKNOWN;
         }
     } else {
         /* generic MMX or SSE operation */
@@ -4486,6 +4484,7 @@ static void gen_sse(CPUX86State *env, DisasContext *s, int b)
             set_cc_op(s, CC_OP_EFLAGS);
         }
     }
+    return s->base.is_jmp;
 }
 
 /* convert one instruction. s->base.is_jmp is set if the translation must
@@ -8379,8 +8378,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
     case 0x1c2:
     case 0x1c4 ... 0x1c6:
     case 0x1d0 ... 0x1fe:
-        gen_sse(env, s, b);
-        break;
+        return gen_sse(env, s, b);
     default:
         goto unknown_op;
     }
