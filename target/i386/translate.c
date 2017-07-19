@@ -2250,30 +2250,37 @@ static inline void gen_goto_tb(DisasContext *s, int tb_num, target_ulong eip)
     }
 }
 
-static inline void gen_jcc(DisasContext *s, int b,
-                           target_ulong val, target_ulong next_eip)
+static void gen_jcc(DisasContext *s, int b, target_ulong dest_eip,
+                    target_ulong next_eip)
 {
-    TCGLabel *l1, *l2;
-
     if (s->jmp_opt) {
-        l1 = gen_new_label();
+        TCGLabel *l1 = gen_new_label();
         gen_jcc1(s, b, l1);
 
         gen_goto_tb(s, 0, next_eip);
 
         gen_set_label(l1);
-        gen_goto_tb(s, 1, val);
+        gen_goto_tb(s, 1, dest_eip);
     } else {
-        l1 = gen_new_label();
-        l2 = gen_new_label();
-        gen_jcc1(s, b, l1);
+        CCPrepare cc = gen_prepare_cc(s, b, s->T0);
+        TCGv dst, nxt;
 
-        gen_jmp_im(s, next_eip);
-        tcg_gen_br(l2);
+        if (cc.mask != -1) {
+            tcg_gen_andi_tl(s->T0, cc.reg, cc.mask);
+            cc.reg = s->T0;
+        }
+        if (!cc.use_reg2) {
+            tcg_gen_movi_tl(s->T1, cc.imm);
+            cc.reg2 = s->T1;
+        }
 
-        gen_set_label(l1);
-        gen_jmp_im(s, val);
-        gen_set_label(l2);
+        dst = tcg_const_tl(dest_eip);
+        nxt = tcg_const_tl(next_eip);
+        tcg_gen_movcond_tl(cc.cond, s->T0, cc.reg, cc.reg2, dst, nxt);
+        tcg_temp_free(dst);
+        tcg_temp_free(nxt);
+
+        gen_op_jmp_v(s->T0);
         gen_eob(s);
     }
 }
