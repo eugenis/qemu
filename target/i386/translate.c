@@ -5501,12 +5501,12 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         gen_pop_update(s, ot);
         /* Note that reg == R_SS in gen_movl_seg_T0 always sets is_jmp.  */
         if (s->base.is_jmp) {
-            gen_jmp_im(s, s->pc - s->cs_base);
             if (reg == R_SS) {
                 s->tf = 0;
+                gen_jmp_im(s, s->pc - s->cs_base);
                 gen_eob_inhibit_irq(s, true);
             } else {
-                gen_eob(s);
+                return DISAS_TOO_MANY;
             }
         }
         break;
@@ -5564,12 +5564,12 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         gen_movl_seg_T0(s, reg);
         /* Note that reg == R_SS in gen_movl_seg_T0 always sets is_jmp.  */
         if (s->base.is_jmp) {
-            gen_jmp_im(s, s->pc - s->cs_base);
             if (reg == R_SS) {
                 s->tf = 0;
+                gen_jmp_im(s, s->pc - s->cs_base);
                 gen_eob_inhibit_irq(s, true);
             } else {
-                gen_eob(s);
+                return DISAS_TOO_MANY;
             }
         }
         break;
@@ -6766,8 +6766,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             gen_pop_update(s, ot);
             set_cc_op(s, CC_OP_EFLAGS);
             /* abort translation because TF/AC flag may change */
-            gen_jmp_im(s, s->pc - s->cs_base);
-            gen_eob(s);
+            return DISAS_TOO_MANY;
         }
         break;
     case 0x9e: /* sahf */
@@ -7432,9 +7431,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 return DISAS_ILLEGAL;
             }
             gen_helper_clac(cpu_env);
-            gen_jmp_im(s, s->pc - s->cs_base);
-            gen_eob(s);
-            break;
+            return DISAS_TOO_MANY;
 
         case 0xcb: /* stac */
             if (!(s->cpuid_7_0_ebx_features & CPUID_7_0_EBX_SMAP)
@@ -7442,9 +7439,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 return DISAS_ILLEGAL;
             }
             gen_helper_stac(cpu_env);
-            gen_jmp_im(s, s->pc - s->cs_base);
-            gen_eob(s);
-            break;
+            return DISAS_TOO_MANY;
 
         CASE_MODRM_MEM_OP(1): /* sidt */
             gen_svm_check_intercept(s, pc_start, SVM_EXIT_IDTR_READ);
@@ -7484,9 +7479,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             tcg_gen_trunc_tl_i32(s->tmp2_i32, cpu_regs[R_ECX]);
             gen_helper_xsetbv(cpu_env, s->tmp2_i32, s->tmp1_i64);
             /* End TB because translation flags may change.  */
-            gen_jmp_im(s, s->pc - s->cs_base);
-            gen_eob(s);
-            break;
+            return DISAS_TOO_MANY;
 
         case 0xd8: /* VMRUN */
             if (!(s->flags & HF_SVME_MASK) || !s->pe) {
@@ -7653,9 +7646,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             gen_svm_check_intercept(s, pc_start, SVM_EXIT_WRITE_CR0);
             gen_ldst_modrm(env, s, modrm, MO_16, OR_TMP0, 0);
             gen_helper_lmsw(cpu_env, s->T0);
-            gen_jmp_im(s, s->pc - s->cs_base);
-            gen_eob(s);
-            break;
+            return DISAS_TOO_MANY;
 
         CASE_MODRM_MEM_OP(7): /* invlpg */
             if (s->cpl != 0) {
@@ -7665,9 +7656,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             gen_jmp_im(s, pc_start - s->cs_base);
             gen_lea_modrm(env, s, modrm);
             gen_helper_invlpg(cpu_env, s->A0);
-            gen_jmp_im(s, s->pc - s->cs_base);
-            gen_eob(s);
-            break;
+            return DISAS_TOO_MANY;
 
         case 0xf8: /* swapgs */
 #ifdef TARGET_X86_64
@@ -8073,8 +8062,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                     if (tb_cflags(s->base.tb) & CF_USE_ICOUNT) {
                         gen_io_end();
                     }
-                    gen_jmp_im(s, s->pc - s->cs_base);
-                    gen_eob(s);
+                    return DISAS_TOO_MANY;
                 } else {
                     if (tb_cflags(s->base.tb) & CF_USE_ICOUNT) {
                         gen_io_start();
@@ -8116,8 +8104,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
                 gen_op_mov_v_reg(s, ot, s->T0, rm);
                 tcg_gen_movi_i32(s->tmp2_i32, reg);
                 gen_helper_set_dr(cpu_env, s->tmp2_i32, s->T0);
-                gen_jmp_im(s, s->pc - s->cs_base);
-                gen_eob(s);
+                return DISAS_TOO_MANY;
             } else {
                 gen_svm_check_intercept(s, pc_start, SVM_EXIT_READ_DR0 + reg);
                 tcg_gen_movi_i32(s->tmp2_i32, reg);
@@ -8133,8 +8120,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             gen_svm_check_intercept(s, pc_start, SVM_EXIT_WRITE_CR0);
             gen_helper_clts(cpu_env);
             /* abort block because static cpu state changed */
-            gen_jmp_im(s, s->pc - s->cs_base);
-            gen_eob(s);
+            return DISAS_TOO_MANY;
         }
         break;
     /* MMX/3DNow!/SSE/SSE2/SSE3/SSSE3/SSE4 support */
@@ -8228,9 +8214,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
             /* XRSTOR is how MPX is enabled, which changes how
                we translate.  Thus we need to end the TB.  */
             gen_update_cc_op(s);
-            gen_jmp_im(s, s->pc - s->cs_base);
-            gen_eob(s);
-            break;
+            return DISAS_TOO_MANY;
 
         CASE_MODRM_MEM_OP(6): /* xsaveopt / clwb */
             if (s->prefix & PREFIX_LOCK) {
