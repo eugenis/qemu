@@ -2504,25 +2504,6 @@ static void gen_leave(DisasContext *s)
     gen_op_mov_reg_v(s, a_ot, R_ESP, s->T1);
 }
 
-/* Similarly, except that the assumption here is that we don't decode
-   the instruction at all -- either a missing opcode, an unimplemented
-   feature, or just a bogus instruction stream.  */
-static void gen_unknown_opcode(CPUX86State *env, DisasContext *s)
-{
-    gen_illegal_opcode(s);
-
-    if (qemu_loglevel_mask(LOG_UNIMP)) {
-        target_ulong pc = s->pc_start, end = s->pc;
-        qemu_log_lock();
-        qemu_log("ILLOPC: " TARGET_FMT_lx ":", pc);
-        for (; pc < end; ++pc) {
-            qemu_log(" %02x", cpu_ldub_code(env, pc));
-        }
-        qemu_log("\n");
-        qemu_log_unlock();
-    }
-}
-
 /* an interrupt is different from an exception because of the
    privilege checks */
 static void gen_interrupt(DisasContext *s, int intno,
@@ -8618,10 +8599,27 @@ static void i386_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
     case DISAS_NORETURN:
         break;
     case DISAS_UNKNOWN:
-        gen_unknown_opcode(cpu->env_ptr, dc);
-        break;
+        /*
+         * The same as DISAS_ILLEGAL, except that the assumption is that we
+         * don't decode the instruction at all -- either a missing opcode,
+         * an unimplemented feature, or just a bogus instruction stream.
+         */
+        if (qemu_loglevel_mask(LOG_UNIMP)) {
+            CPUX86State *env = cpu->env_ptr;
+            target_ulong pc = dc->pc_start;
+            target_ulong end = dc->pc;
+
+            qemu_log_lock();
+            qemu_log("ILLOPC: " TARGET_FMT_lx ":", pc);
+            for (; pc < end; ++pc) {
+                qemu_log(" %02x", cpu_ldub_code(env, pc));
+            }
+            qemu_log("\n");
+            qemu_log_unlock();
+        }
+        /* fall through */
     case DISAS_ILLEGAL:
-        gen_illegal_opcode(dc);
+        gen_exception(dc, EXCP06_ILLOP);
         break;
     case DISAS_PREX:
         gen_exception(dc, EXCP07_PREX);
