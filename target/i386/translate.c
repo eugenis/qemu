@@ -37,6 +37,7 @@
 #define DISAS_PREX       DISAS_TARGET_2
 #define DISAS_GPF        DISAS_TARGET_3
 #define DISAS_EOB        DISAS_TARGET_4
+#define DISAS_NEXT_INHIBIT_IRQ  DISAS_TARGET_5
 
 #define PREFIX_REPZ   0x01
 #define PREFIX_REPNZ  0x02
@@ -2599,13 +2600,6 @@ static inline void
 gen_eob_worker(DisasContext *s, bool inhibit, bool recheck_tf)
 {
     do_gen_eob_worker(s, inhibit, recheck_tf, false);
-}
-
-/* End of block.
-   If INHIBIT, set HF_INHIBIT_IRQ_MASK if it isn't already set.  */
-static void gen_eob_inhibit_irq(DisasContext *s, bool inhibit)
-{
-    gen_eob_worker(s, inhibit, false);
 }
 
 /* End of block, resetting the inhibit irq flag.  */
@@ -5485,8 +5479,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         if (s->base.is_jmp) {
             if (reg == R_SS) {
                 s->tf = 0;
-                gen_jmp_im(s, s->pc - s->cs_base);
-                gen_eob_inhibit_irq(s, true);
+                return DISAS_NEXT_INHIBIT_IRQ;
             } else {
                 return DISAS_TOO_MANY;
             }
@@ -5548,8 +5541,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         if (s->base.is_jmp) {
             if (reg == R_SS) {
                 s->tf = 0;
-                gen_jmp_im(s, s->pc - s->cs_base);
-                gen_eob_inhibit_irq(s, true);
+                return DISAS_NEXT_INHIBIT_IRQ;
             } else {
                 return DISAS_TOO_MANY;
             }
@@ -7103,8 +7095,7 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         if (s->vm86 ? s->iopl == 3 : s->cpl <= s->iopl) {
             gen_helper_sti(cpu_env);
             /* interruptions are enabled only the first insn after sti */
-            gen_jmp_im(s, s->pc - s->cs_base);
-            gen_eob_inhibit_irq(s, true);
+            return DISAS_NEXT_INHIBIT_IRQ;
         } else {
             return DISAS_GPF;
         }
@@ -8595,6 +8586,10 @@ static void i386_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
         /* fall through */
     case DISAS_EOB:
         gen_eob(dc);
+        break;
+    case DISAS_NEXT_INHIBIT_IRQ:
+        gen_jmp_im(dc, dc->base.pc_next - dc->cs_base);
+        gen_eob_worker(dc, true, false);
         break;
     case DISAS_NORETURN:
         break;
