@@ -5515,10 +5515,6 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         ot = gen_pop_T0(s);
         gen_movl_seg_T0(s, (b >> 3) & 7);
         gen_pop_update(s, ot);
-        if (s->base.is_jmp) {
-            gen_jmp_im(s, s->pc - s->cs_base);
-            gen_eob(s);
-        }
         break;
 
         /**************************/
@@ -5777,10 +5773,6 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
         gen_movl_seg_T0(s, op);
         /* then put the data */
         gen_op_mov_reg_v(s, ot, reg, s->T1);
-        if (s->base.is_jmp) {
-            gen_jmp_im(s, s->pc - s->cs_base);
-            gen_eob(s);
-        }
         break;
 
         /************************/
