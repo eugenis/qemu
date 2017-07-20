@@ -400,6 +400,7 @@ TranslationBlock *tcg_tb_alloc(TCGContext *s)
         return NULL;
     }
     s->code_gen_ptr = next;
+    s->data_gen_ptr = NULL;
     return tb;
 }
 
