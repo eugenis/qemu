@@ -124,11 +124,11 @@ static bool have_cmov;
 /* We need these symbols in tcg-target.h, and we can't properly conditionalize
    it there.  Therefore we always define the variable.  */
 bool have_bmi1;
+bool have_bmi2;
 bool have_popcnt;
 
 #ifdef CONFIG_CPUID_H
 static bool have_movbe;
-static bool have_bmi2;
 static bool have_lzcnt;
 #else
 # define have_movbe 0
@@ -297,6 +297,7 @@ static inline int tcg_target_const_match(tcg_target_long val, TCGType type,
 #define OPC_ARITH_GvEv	(0x03)		/* ... plus (ARITH_FOO << 3) */
 #define OPC_ANDN        (0xf2 | P_EXT38)
 #define OPC_ADD_GvEv	(OPC_ARITH_GvEv | (ARITH_ADD << 3))
+#define OPC_BEXTR       (0xf7 | P_EXT38)
 #define OPC_BSF         (0xbc | P_EXT)
 #define OPC_BSR         (0xbd | P_EXT)
 #define OPC_BSWAP	(0xc8 | P_EXT)
@@ -1851,7 +1852,7 @@ static void tcg_out_qemu_st(TCGContext *s, const TCGArg *args, bool is64)
 static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
                               const TCGArg *args, const int *const_args)
 {
-    TCGArg a0, a1, a2;
+    TCGArg a0, a1, a2, a3;
     int c, const_a2, vexop, rexw = 0;
 
 #if TCG_TARGET_REG_BITS == 64
@@ -2237,12 +2238,33 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
         /* On the off-chance that we can use the high-byte registers.
            Otherwise we emit the same ext16 + shift pattern that we
            would have gotten from the normal tcg-op.c expansion.  */
-        tcg_debug_assert(a2 == 8 && args[3] == 8);
-        if (a1 < 4 && a0 < 8) {
-            tcg_out_modrm(s, OPC_MOVZBL, a0, a1 + 4);
+        a3 = args[3];
+        if (a2 == 8 && a3 == 8) {
+            if (a1 < 4 && a0 < 8) {
+                tcg_out_modrm(s, OPC_MOVZBL, a0, a1 + 4);
+            } else {
+                tcg_out_ext16u(s, a0, a1);
+                tcg_out_shifti(s, SHIFT_SHR, a0, 8);
+            }
         } else {
-            tcg_out_ext16u(s, a0, a1);
-            tcg_out_shifti(s, SHIFT_SHR, a0, 8);
+            tcg_debug_assert(have_bmi2);
+            if (a0 == a1) {
+                /* ??? Free up a temporary?  */
+                /* ??? Use PEXT with the mask in a constant pool?  */
+                if (a3 > 32) {
+                    tcg_out_shifti(s, SHIFT_SHL + P_REXW, a0, 64 - a2 - a3);
+                    tcg_out_shifti(s, SHIFT_SHR + P_REXW, a0, 64 - a3);
+                } else {
+                    if (a2 != 0) {
+                        tcg_out_shifti(s, SHIFT_SHR + (a2 + a3 > 32) * P_REXW,
+                                       a0, a2);
+                    }
+                    tgen_arithi(s, ARITH_AND, a0, (1ull << a3) - 1, 0);
+                }
+            } else {
+                tcg_out_movi(s, TCG_TYPE_I32, a0, a2 + a3 * 256);
+                tcg_out_vex_modrm(s, OPC_BEXTR + rexw, a0, a0, a1);
+            }
         }
         break;
 
