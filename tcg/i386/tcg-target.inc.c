@@ -22,7 +22,7 @@
  * THE SOFTWARE.
  */
 
-#include "tcg-be-ldst.h"
+#include "tcg-be-ldst-data.h"
 
 #ifdef CONFIG_DEBUG_TCG
 static const char * const tcg_target_reg_names[TCG_TARGET_NB_REGS] = {
@@ -328,6 +328,7 @@ static inline int tcg_target_const_match(tcg_target_long val, TCGType type,
 #define OPC_MOVSLQ	(0x63 | P_REXW)
 #define OPC_MOVZBL	(0xb6 | P_EXT)
 #define OPC_MOVZWL	(0xb7 | P_EXT)
+#define OPC_PEXT        (0xf5 | P_EXT38 | P_SIMDF3)
 #define OPC_POP_r32	(0x58)
 #define OPC_POPCNT      (0xb8 | P_EXT | P_SIMDF3)
 #define OPC_PUSH_r32	(0x50)
@@ -492,7 +493,7 @@ static void tcg_out_modrm(TCGContext *s, int opc, int r, int rm)
     tcg_out8(s, 0xc0 | (LOWREGMASK(r) << 3) | LOWREGMASK(rm));
 }
 
-static void tcg_out_vex_modrm(TCGContext *s, int opc, int r, int v, int rm)
+static void tcg_out_vex_pfx_opc(TCGContext *s, int opc, int r, int v, int rm)
 {
     int tmp;
 
@@ -531,7 +532,28 @@ static void tcg_out_vex_modrm(TCGContext *s, int opc, int r, int v, int rm)
     tmp |= (~v & 15) << 3;                 /* VEX.vvvv */
     tcg_out8(s, tmp);
     tcg_out8(s, opc);
+}
+
+static void tcg_out_vex_modrm(TCGContext *s, int opc, int r, int v, int rm)
+{
+    tcg_out_vex_pfx_opc(s, opc, r, v, rm);
     tcg_out8(s, 0xc0 | (LOWREGMASK(r) << 3) | LOWREGMASK(rm));
+}
+
+static void tcg_out_vex_pool_imm(TCGContext *s, int opc, int r, int v,
+                                 tcg_target_ulong data)
+{
+    tcg_out_vex_pfx_opc(s, opc, r, v, 0);
+
+    /* modrm for 64-bit rip-relative, or 32-bit absolute addressing.  */
+    tcg_out8(s, (LOWREGMASK(r) << 3) | 5);
+
+    if (TCG_TARGET_REG_BITS == 64) {
+        new_pool_label(s, data, R_386_PC32, s->code_ptr, -4);
+    } else {
+        new_pool_label(s, data, R_386_32, s->code_ptr, 0);
+    }
+    tcg_out32(s, 0);
 }
 
 /* Output an opcode with a full "rm + (index<<shift) + offset" address mode.
@@ -2249,19 +2271,11 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
         } else {
             tcg_debug_assert(have_bmi2);
             if (a0 == a1) {
-                /* ??? Free up a temporary?  */
-                /* ??? Use PEXT with the mask in a constant pool?  */
-                if (a3 > 32) {
-                    tcg_out_shifti(s, SHIFT_SHL + P_REXW, a0, 64 - a2 - a3);
-                    tcg_out_shifti(s, SHIFT_SHR + P_REXW, a0, 64 - a3);
-                } else {
-                    if (a2 != 0) {
-                        tcg_out_shifti(s, SHIFT_SHR + (a2 + a3 > 32) * P_REXW,
-                                       a0, a2);
-                    }
-                    tgen_arithi(s, ARITH_AND, a0, (1ull << a3) - 1, 0);
-                }
+                /* 9 bytes for pext + 8 bytes for constant pool data.  */
+                tcg_target_ulong mask = deposit64(0, a2, a3, -1);
+                tcg_out_vex_pool_imm(s, OPC_PEXT + rexw, a0, a1, mask);
             } else {
+                /* 5 bytes for movi + 5 bytes for bextr.  */
                 tcg_out_movi(s, TCG_TYPE_I32, a0, a2 + a3 * 256);
                 tcg_out_vex_modrm(s, OPC_BEXTR + rexw, a0, a0, a1);
             }
@@ -2615,6 +2629,11 @@ static void tcg_target_qemu_prologue(TCGContext *s)
         setup_guest_base_seg();
     }
 #endif
+}
+
+static void tcg_out_nop_fill(tcg_insn_unit *p, int count)
+{
+    memset(p, 0x90, count);
 }
 
 static void tcg_target_init(TCGContext *s)
