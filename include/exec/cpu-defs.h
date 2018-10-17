@@ -141,6 +141,17 @@ typedef struct CPUIOTLBEntry {
     MemTxAttrs attrs;
 } CPUIOTLBEntry;
 
+typedef struct CPUTLBDesc {
+    /*
+     * Describe a region covering all of the large pages allocated
+     * into the tlb.  When any page within this region is flushed,
+     * we must flush the entire tlb.  The region is matched if
+     * (addr & large_page_mask) == large_page_addr.
+     */
+    target_ulong large_page_addr;
+    target_ulong large_page_mask;
+} CPUTLBDesc;
+
 /*
  * The meaning of the MMU modes is defined in the target code.
  * tlb_lock serializes updates to tlb_table and tlb_v_table,
@@ -151,13 +162,12 @@ typedef struct CPUIOTLBEntry {
     /* tlb_lock serializes updates to tlb_table and tlb_v_table */      \
     QemuSpin tlb_lock;                                                  \
     uint16_t tlb_pending_flush;                                         \
+    CPUTLBDesc tlb_desc[NB_MMU_MODES];                                  \
     CPUTLBEntry tlb_table[NB_MMU_MODES][CPU_TLB_SIZE];                  \
     CPUTLBEntry tlb_v_table[NB_MMU_MODES][CPU_VTLB_SIZE];               \
     CPUIOTLBEntry iotlb[NB_MMU_MODES][CPU_TLB_SIZE];                    \
     CPUIOTLBEntry iotlb_v[NB_MMU_MODES][CPU_VTLB_SIZE];                 \
     size_t tlb_flush_count;                                             \
-    target_ulong tlb_flush_addr;                                        \
-    target_ulong tlb_flush_mask;                                        \
     target_ulong vtlb_index;                                            \
 
 #else
