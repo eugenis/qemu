@@ -169,7 +169,9 @@ typedef struct CPUTLBDesc {
     CPUTLBEntry tlb_v_table[NB_MMU_MODES][CPU_VTLB_SIZE];               \
     CPUIOTLBEntry iotlb[NB_MMU_MODES][CPU_TLB_SIZE];                    \
     CPUIOTLBEntry iotlb_v[NB_MMU_MODES][CPU_VTLB_SIZE];                 \
-    size_t tlb_flush_count;
+    size_t tlb_full_flush_count;                                        \
+    size_t tlb_part_flush_count;                                        \
+    size_t tlb_elide_flush_count;
 
 #else
 
