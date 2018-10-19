@@ -113,77 +113,6 @@ size_t tlb_flush_count(void)
     return count;
 }
 
-/* This is OK because CPU architectures generally permit an
- * implementation to drop entries from the TLB at any time, so
- * flushing more entries than required is only an efficiency issue,
- * not a correctness issue.
- */
-static void tlb_flush_nocheck(CPUState *cpu)
-{
-    CPUArchState *env = cpu->env_ptr;
-
-    assert_cpu_is_self(cpu);
-    atomic_set(&env->tlb_flush_count, env->tlb_flush_count + 1);
-    tlb_debug("(count: %zu)\n", tlb_flush_count());
-
-    /*
-     * tlb_table/tlb_v_table updates from any thread must hold tlb_lock.
-     * However, updates from the owner thread (as is the case here; see the
-     * above assert_cpu_is_self) do not need atomic_set because all reads
-     * that do not hold the lock are performed by the same owner thread.
-     */
-    qemu_spin_lock(&env->tlb_lock);
-    env->tlb_pending_flush = 0;
-    memset(env->tlb_table, -1, sizeof(env->tlb_table));
-    memset(env->tlb_v_table, -1, sizeof(env->tlb_v_table));
-    qemu_spin_unlock(&env->tlb_lock);
-
-    cpu_tb_jmp_cache_clear(cpu);
-
-    env->vtlb_index = 0;
-    env->tlb_flush_addr = -1;
-    env->tlb_flush_mask = 0;
-}
-
-static void tlb_flush_global_async_work(CPUState *cpu, run_on_cpu_data data)
-{
-    tlb_flush_nocheck(cpu);
-}
-
-void tlb_flush(CPUState *cpu)
-{
-    if (cpu->created && !qemu_cpu_is_self(cpu)) {
-        CPUArchState *env = cpu->env_ptr;
-        uint16_t pending;
-
-        qemu_spin_lock(&env->tlb_lock);
-        pending = env->tlb_pending_flush;
-        env->tlb_pending_flush = ALL_MMUIDX_BITS;
-        qemu_spin_unlock(&env->tlb_lock);
-
-        if (pending != ALL_MMUIDX_BITS) {
-            async_run_on_cpu(cpu, tlb_flush_global_async_work,
-                             RUN_ON_CPU_NULL);
-        }
-    } else {
-        tlb_flush_nocheck(cpu);
-    }
-}
-
-void tlb_flush_all_cpus(CPUState *src_cpu)
-{
-    const run_on_cpu_func fn = tlb_flush_global_async_work;
-    flush_all_helper(src_cpu, fn, RUN_ON_CPU_NULL);
-    fn(src_cpu, RUN_ON_CPU_NULL);
-}
-
-void tlb_flush_all_cpus_synced(CPUState *src_cpu)
-{
-    const run_on_cpu_func fn = tlb_flush_global_async_work;
-    flush_all_helper(src_cpu, fn, RUN_ON_CPU_NULL);
-    async_safe_run_on_cpu(src_cpu, fn, RUN_ON_CPU_NULL);
-}
-
 static void tlb_flush_by_mmuidx_async_work(CPUState *cpu, run_on_cpu_data data)
 {
     CPUArchState *env = cpu->env_ptr;
@@ -192,16 +121,13 @@ static void tlb_flush_by_mmuidx_async_work(CPUState *cpu, run_on_cpu_data data)
 
     assert_cpu_is_self(cpu);
 
-    tlb_debug("start: mmu_idx:0x%04lx\n", mmu_idx_bitmask);
+    tlb_debug("mmu_bitmask: 0x%04lx\n", mmu_idx_bitmask);
 
     qemu_spin_lock(&env->tlb_lock);
     env->tlb_pending_flush &= ~mmu_idx_bitmask;
 
     for (mmu_idx = 0; mmu_idx < NB_MMU_MODES; mmu_idx++) {
-
         if (test_bit(mmu_idx, &mmu_idx_bitmask)) {
-            tlb_debug("%d\n", mmu_idx);
-
             memset(env->tlb_table[mmu_idx], -1, sizeof(env->tlb_table[0]));
             memset(env->tlb_v_table[mmu_idx], -1, sizeof(env->tlb_v_table[0]));
         }
@@ -210,12 +136,17 @@ static void tlb_flush_by_mmuidx_async_work(CPUState *cpu, run_on_cpu_data data)
 
     cpu_tb_jmp_cache_clear(cpu);
 
-    tlb_debug("done\n");
+    if (mmu_idx_bitmask == ALL_MMUIDX_BITS) {
+        env->vtlb_index = 0;
+        env->tlb_flush_addr = -1;
+        env->tlb_flush_mask = 0;
+        atomic_set(&env->tlb_flush_count, env->tlb_flush_count + 1);
+    }
 }
 
 void tlb_flush_by_mmuidx(CPUState *cpu, uint16_t idxmap)
 {
-    tlb_debug("mmu_idx: 0x%" PRIx16 "\n", idxmap);
+    tlb_debug("mmu_bitmask: 0x%" PRIx16 "\n", idxmap);
 
     if (cpu->created && !qemu_cpu_is_self(cpu)) {
         CPUArchState *env = cpu->env_ptr;
@@ -228,7 +159,7 @@ void tlb_flush_by_mmuidx(CPUState *cpu, uint16_t idxmap)
         qemu_spin_unlock(&env->tlb_lock);
 
         if (to_clean) {
-            tlb_debug("reduced mmu_idx: 0x%" PRIx16 "\n", to_clean);
+            tlb_debug("reduced mmu_bitmask: 0x%" PRIx16 "\n", to_clean);
             async_run_on_cpu(cpu, tlb_flush_by_mmuidx_async_work,
                              RUN_ON_CPU_HOST_INT(to_clean));
         }
@@ -237,14 +168,24 @@ void tlb_flush_by_mmuidx(CPUState *cpu, uint16_t idxmap)
     }
 }
 
+void tlb_flush(CPUState *cpu)
+{
+    tlb_flush_by_mmuidx(cpu, ALL_MMUIDX_BITS);
+}
+
 void tlb_flush_by_mmuidx_all_cpus(CPUState *src_cpu, uint16_t idxmap)
 {
     const run_on_cpu_func fn = tlb_flush_by_mmuidx_async_work;
 
-    tlb_debug("mmu_idx: 0x%"PRIx16"\n", idxmap);
+    tlb_debug("mmu_bitmask: 0x%"PRIx16"\n", idxmap);
 
     flush_all_helper(src_cpu, fn, RUN_ON_CPU_HOST_INT(idxmap));
     fn(src_cpu, RUN_ON_CPU_HOST_INT(idxmap));
+}
+
+void tlb_flush_all_cpus(CPUState *src_cpu)
+{
+    tlb_flush_by_mmuidx_all_cpus(src_cpu, ALL_MMUIDX_BITS);
 }
 
 void tlb_flush_by_mmuidx_all_cpus_synced(CPUState *src_cpu,
@@ -252,10 +193,15 @@ void tlb_flush_by_mmuidx_all_cpus_synced(CPUState *src_cpu,
 {
     const run_on_cpu_func fn = tlb_flush_by_mmuidx_async_work;
 
-    tlb_debug("mmu_idx: 0x%"PRIx16"\n", idxmap);
+    tlb_debug("mmu_bitmask: 0x%"PRIx16"\n", idxmap);
 
     flush_all_helper(src_cpu, fn, RUN_ON_CPU_HOST_INT(idxmap));
     async_safe_run_on_cpu(src_cpu, fn, RUN_ON_CPU_HOST_INT(idxmap));
+}
+
+void tlb_flush_all_cpus_synced(CPUState *src_cpu)
+{
+    tlb_flush_by_mmuidx_all_cpus_synced(src_cpu, ALL_MMUIDX_BITS);
 }
 
 static inline bool tlb_hit_page_anyprot(CPUTLBEntry *tlb_entry,
