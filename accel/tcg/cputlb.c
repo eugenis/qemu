@@ -119,6 +119,7 @@ static void tlb_flush_one_mmuidx_locked(CPUArchState *env, int mmu_idx)
     memset(env->tlb_v_table[mmu_idx], -1, sizeof(env->tlb_v_table[0]));
     env->tlb_desc[mmu_idx].large_page_addr = -1;
     env->tlb_desc[mmu_idx].large_page_mask = -1;
+    env->tlb_desc[mmu_idx].vtlb_index = 0;
 }
 
 static void tlb_flush_by_mmuidx_async_work(CPUState *cpu, run_on_cpu_data data)
@@ -144,7 +145,6 @@ static void tlb_flush_by_mmuidx_async_work(CPUState *cpu, run_on_cpu_data data)
     cpu_tb_jmp_cache_clear(cpu);
 
     if (mmu_idx_bitmask == ALL_MMUIDX_BITS) {
-        env->vtlb_index = 0;
         atomic_set(&env->tlb_flush_count, env->tlb_flush_count + 1);
     }
 }
@@ -617,7 +617,7 @@ void tlb_set_page_with_attrs(CPUState *cpu, target_ulong vaddr,
      * different page; otherwise just overwrite the stale data.
      */
     if (!tlb_hit_page_anyprot(te, vaddr_page)) {
-        unsigned vidx = env->vtlb_index++ % CPU_VTLB_SIZE;
+        unsigned vidx = env->tlb_desc[mmu_idx].vtlb_index++ % CPU_VTLB_SIZE;
         CPUTLBEntry *tv = &env->tlb_v_table[mmu_idx][vidx];
 
         /* Evict the old entry into the victim tlb.  */
