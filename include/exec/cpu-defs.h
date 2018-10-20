@@ -141,10 +141,16 @@ typedef struct CPUIOTLBEntry {
     MemTxAttrs attrs;
 } CPUIOTLBEntry;
 
+/*
+ * The meaning of the MMU modes is defined in the target code.
+ * tlb_lock serializes updates to tlb_table and tlb_v_table,
+ * and tlb_pending_flush.
+ */
 #define CPU_COMMON_TLB \
     /* The meaning of the MMU modes is defined in the target code. */   \
     /* tlb_lock serializes updates to tlb_table and tlb_v_table */      \
     QemuSpin tlb_lock;                                                  \
+    uint16_t tlb_pending_flush;                                         \
     CPUTLBEntry tlb_table[NB_MMU_MODES][CPU_TLB_SIZE];                  \
     CPUTLBEntry tlb_v_table[NB_MMU_MODES][CPU_VTLB_SIZE];               \
     CPUIOTLBEntry iotlb[NB_MMU_MODES][CPU_TLB_SIZE];                    \
