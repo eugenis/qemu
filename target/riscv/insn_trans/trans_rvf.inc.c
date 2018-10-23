@@ -333,9 +333,9 @@ static bool trans_fmv_w_x(DisasContext *ctx, arg_fmv_w_x *a)
     return true;
 }
 
+#ifdef TARGET_RISCV64
 static bool trans_fcvt_l_s(DisasContext *ctx, arg_fcvt_l_s *a)
 {
-#if defined(TARGET_RISCV64)
     REQUIRE_FPU;
 
     TCGv t0 = tcg_temp_new();
@@ -344,14 +344,10 @@ static bool trans_fcvt_l_s(DisasContext *ctx, arg_fcvt_l_s *a)
     gen_set_gpr(a->rd, t0);
     tcg_temp_free(t0);
     return true;
-#else
-    return false;
-#endif
 }
 
 static bool trans_fcvt_lu_s(DisasContext *ctx, arg_fcvt_lu_s *a)
 {
-#if defined(TARGET_RISCV64)
     REQUIRE_FPU;
 
     TCGv t0 = tcg_temp_new();
@@ -360,14 +356,10 @@ static bool trans_fcvt_lu_s(DisasContext *ctx, arg_fcvt_lu_s *a)
     gen_set_gpr(a->rd, t0);
     tcg_temp_free(t0);
     return true;
-#else
-    return false;
-#endif
 }
 
 static bool trans_fcvt_s_l(DisasContext *ctx, arg_fcvt_s_l *a)
 {
-#if defined(TARGET_RISCV64)
     REQUIRE_FPU;
 
     TCGv t0 = tcg_temp_new();
@@ -378,14 +370,10 @@ static bool trans_fcvt_s_l(DisasContext *ctx, arg_fcvt_s_l *a)
 
     tcg_temp_free(t0);
     return true;
-#else
-    return false;
-#endif
 }
 
 static bool trans_fcvt_s_lu(DisasContext *ctx, arg_fcvt_s_lu *a)
 {
-#if defined(TARGET_RISCV64)
     REQUIRE_FPU;
 
     TCGv t0 = tcg_temp_new();
@@ -396,7 +384,5 @@ static bool trans_fcvt_s_lu(DisasContext *ctx, arg_fcvt_s_lu *a)
 
     tcg_temp_free(t0);
     return true;
-#else
-    return false;
-#endif
 }
+#endif /* TARGET_RISCV64 */

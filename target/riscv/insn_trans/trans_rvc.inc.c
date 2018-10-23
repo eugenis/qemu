@@ -28,38 +28,6 @@ static bool trans_c_addi4spn(DisasContext *ctx, arg_c_addi4spn *a)
     return trans_addi(ctx, &arg);
 }
 
-static bool trans_c_flw_ld(DisasContext *ctx, arg_c_flw_ld *a)
-{
-#ifdef TARGET_RISCV32
-    /* C.FLW ( RV32FC-only ) */
-    arg_c_lw tmp;
-    extract_cl_w(&tmp, insn);
-    arg_flw arg = { .rd = tmp.rd, .rs1 = tmp.rs1, .imm = tmp.uimm };
-    return trans_flw(ctx, &arg, insn);
-#else
-    /* C.LD ( RV64C/RV128C-only ) */
-    arg_i tmp;
-    extract_cl_d(&tmp, 0); // FIXME
-    return trans_ld(ctx, &tmp);
-#endif
-}
-
-static bool trans_c_fsw_sd(DisasContext *ctx, arg_c_fsw_sd *a)
-{
-#ifdef TARGET_RISCV32
-    /* C.FSW ( RV32FC-only ) */
-    arg_c_sw tmp;
-    extract_cs_w(&tmp, insn);
-    arg_fsw arg = { .rs1 = tmp.rs1, .rs2 = tmp.rs2, .imm = tmp.uimm };
-    return trans_fsw(ctx, &arg, insn);
-#else
-    /* C.SD ( RV64C/RV128C-only ) */
-    arg_s tmp;
-    extract_cs_d(&tmp, 0); // FIXME
-    return trans_sd(ctx, &tmp);
-#endif
-}
-
 static bool trans_c_addi(DisasContext *ctx, arg_c_addi *a)
 {
     if (a->imm == 0) {
@@ -68,19 +36,6 @@ static bool trans_c_addi(DisasContext *ctx, arg_c_addi *a)
     }
     arg_addi arg = { .rd = a->rd, .rs1 = a->rd, .imm = a->imm };
     return trans_addi(ctx, &arg);
-}
-
-static bool trans_c_jal_addiw(DisasContext *ctx, arg_c_jal_addiw *a)
-{
-#ifdef TARGET_RISCV32
-    /* C.JAL */
-    arg_jal arg = { .rd = 1, .imm = a->imm };
-    return trans_jal(ctx, &arg, insn);
-#else
-    /* C.ADDIW */
-    arg_addiw arg = { .rd = a->rd, .rs1 = a->rd, .imm = a->imm };
-    return trans_addiw(ctx, &arg);
-#endif
 }
 
 static bool trans_c_li(DisasContext *ctx, arg_c_li *a)
@@ -196,20 +151,6 @@ static bool trans_c_lwsp(DisasContext *ctx, arg_c_lwsp *a)
     return trans_lw(ctx, &arg);
 }
 
-static bool trans_c_flwsp_ldsp(DisasContext *ctx, arg_c_flwsp_ldsp *a)
-{
-#ifdef TARGET_RISCV32
-    /* C.FLWSP */
-    arg_flw arg_flw = { .rd = a->rd, .rs1 = 2, .imm = a->uimm_flwsp };
-    return trans_flw(ctx, &arg_flw);
-#else
-    /* C.LDSP */
-    arg_ld arg_ld = { .rd = a->rd, .rs1 = 2, .imm = a->uimm_ldsp };
-    return trans_ld(ctx, &arg_ld);
-#endif
-    return false;
-}
-
 static bool trans_c_jr_mv(DisasContext *ctx, arg_c_jr_mv *a)
 {
     if (a->rd != 0 && a->rs2 == 0) {
@@ -254,16 +195,4 @@ static bool trans_c_swsp(DisasContext *ctx, arg_c_swsp *a)
 {
     arg_sw arg = { .rs1 = 2, .rs2 = a->rs2, .imm = a->uimm };
     return trans_sw(ctx, &arg);
-}
-
-static bool trans_c_fswsp_sdsp(DisasContext *ctx, arg_c_fswsp_sdsp *a)
-{
-#ifdef TARGET_RISCV32
-    /* C.FSWSP */
-    arg_fsw a_fsw = { .rs1 = a->rs2, .rs2 = 2, .imm = a->uimm_fswsp };
-    return trans_fsw(ctx, &a_fsw, insn);
-#endif
-    /* C.SDSP */
-    arg_sd a_sd = { .rs1 = 2, .rs2 = a->rs2, .imm = a->uimm_sdsp };
-    return trans_sd(ctx, &a_sd);
 }

@@ -42,6 +42,7 @@
 # Argument sets imported from insn32.decode:
 &r         rd rs1 rs2   !extern
 &i         imm rs1 rd   !extern
+&j         imm rd       !extern
 &s         imm rs1 rs2  !extern
 
 # Argument sets:
@@ -64,12 +65,10 @@
 
 # Formats 16:
 @cr        ....  ..... .....  .. &cr                      rs2=%rs2_5  %rd
-@ci        ... . ..... .....  .. &ci     imm=%imm_ci                  %rd
+@ci        ... . ..... .....  .. &i  imm=%imm_ci %rd rs1=%rd
 @ciw       ...   ........ ... .. &ciw    nzuimm=%nzuimm_ciw           rd=%rs2_3
 @cl_d      ... ... ... .. ... .. &i  imm=%uimm_cl_d  rs1=%rs1_3  rd=%rs2_3
 @cl_w      ... ... ... .. ... .. &i  imm=%uimm_cl_w  rs1=%rs1_3  rd=%rs2_3
-@cl        ... ... ... .. ... .. &cl                      rs1=%rs1_3  rd=%rs2_3
-@cs        ... ... ... .. ... .. &cs                      rs1=%rs1_3  rs2=%rs2_3
 @cs_2      ... ... ... .. ... .. &r      rd=%rs1_3 rs1=%rs1_3 rs2=%rs2_3
 @cs_d      ... ... ... .. ... .. &s  imm=%uimm_cl_d  rs1=%rs1_3  rs2=%rs2_3
 @cs_w      ... ... ... .. ... .. &s  imm=%uimm_cl_w  rs1=%rs1_3  rs2=%rs2_3
@@ -82,28 +81,21 @@
 @c_sw      ... . .....  ..... .. &c_sd     uimm=%uimm_6bit_sw  rs2=%rs2_5
 
 @c_addi16sp_lui ... .  ..... ..... .. &c_addi16sp_lui %imm_lui %imm_addi16sp %rd
-@c_flwsp_ldsp   ... .  ..... ..... .. &c_flwsp_ldsp uimm_flwsp=%uimm_6bit_lw \
-    uimm_ldsp=%uimm_6bit_ld %rd
-@c_fswsp_sdsp   ... .  ..... ..... .. &c_fswsp_sdsp uimm_fswsp=%uimm_6bit_sw \
-    uimm_sdsp=%uimm_6bit_sd rs2=%rs2_5
 
 @c_shift        ... . .. ... ..... .. &c_shift rd=%rs1_3 shamt=%nzuimm_6bit
 @c_shift2       ... . .. ... ..... .. &c_shift rd=%rd    shamt=%nzuimm_6bit
 
-@c_andi         ... . .. ... ..... .. &ci imm=%imm_ci rd=%rs1_3
+@c_andi         ... . .. ... ..... .. &i imm=%imm_ci rd=%rs1_3 rs1=%rs1_3
 
-# *** RV64C Standard Extension (Quadrant 0) ***
+# *** RVC Standard Extension (Quadrant 0) ***
 c_addi4spn        000    ........ ... 00 @ciw
 fld               001  ... ... .. ... 00 @cl_d
 lw                010  ... ... .. ... 00 @cl_w
-c_flw_ld          011  --- ... -- ... 00 @cl    #Note: Must parse uimm manually
 fsd               101  ... ... .. ... 00 @cs_d
 sw                110  ... ... .. ... 00 @cs_w
-c_fsw_sd          111  --- ... -- ... 00 @cs    #Note: Must parse uimm manually
 
-# *** RV64C Standard Extension (Quadrant 1) ***
+# *** RVC Standard Extension (Quadrant 1) ***
 c_addi            000 .  .....  ..... 01 @ci
-c_jal_addiw       001 .  .....  ..... 01 @ci #Note: parse rd and/or imm manually
 c_li              010 .  .....  ..... 01 @ci
 c_addi16sp_lui    011 .  .....  ..... 01 @c_addi16sp_lui # shares opc with C.LUI
 c_srli            100 . 00 ...  ..... 01 @c_shift
@@ -113,19 +105,15 @@ sub               100 0 11 ... 00 ... 01 @cs_2
 xor               100 0 11 ... 01 ... 01 @cs_2
 or                100 0 11 ... 10 ... 01 @cs_2
 and               100 0 11 ... 11 ... 01 @cs_2
-subw              100 1 11 ... 00 ... 01 @cs_2
-addw              100 1 11 ... 01 ... 01 @cs_2
 c_j               101     ........... 01 @cj
 c_beqz            110  ... ...  ..... 01 @cb
 c_bnez            111  ... ...  ..... 01 @cb
 
-# *** RV64C Standard Extension (Quadrant 2) ***
+# *** RVC Standard Extension (Quadrant 2) ***
 c_slli            000 .  .....  ..... 10 @c_shift2
 c_fldsp           001 .  .....  ..... 10 @c_ld
 c_lwsp            010 .  .....  ..... 10 @c_lw
-c_flwsp_ldsp      011 .  .....  ..... 10 @c_flwsp_ldsp #C.LDSP:RV64;C.FLWSP:RV32
 c_jr_mv           100 0  .....  ..... 10 @cr
 c_ebreak_jalr_add 100 1  .....  ..... 10 @cr
 c_fsdsp           101   ......  ..... 10 @c_sd
 c_swsp            110 .  .....  ..... 10 @c_sw
-c_fswsp_sdsp      111 .  .....  ..... 10 @c_fswsp_sdsp #C.SDSP:RV64;C.FSWSP:RV32

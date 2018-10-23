@@ -79,47 +79,29 @@ static bool trans_remu(DisasContext *ctx, arg_remu *a)
     return gen_arith(ctx, a, &gen_remu);
 }
 
+#ifdef TARGET_RISCV64
 static bool trans_mulw(DisasContext *ctx, arg_mulw *a)
 {
-#ifdef TARGET_RISCV64
     return gen_arith(ctx, a, &tcg_gen_mul_tl);
-#else
-    return false;
-#endif
 }
 
 static bool trans_divw(DisasContext *ctx, arg_divw *a)
 {
-#ifdef TARGET_RISCV64
     return gen_arith_w(ctx, a, &gen_div);
-#else
-    return false;
-#endif
 }
 
 static bool trans_divuw(DisasContext *ctx, arg_divuw *a)
 {
-#ifdef TARGET_RISCV64
     return gen_arith_w(ctx, a, &gen_divu);
-#else
-    return false;
-#endif
 }
 
 static bool trans_remw(DisasContext *ctx, arg_remw *a)
 {
-#ifdef TARGET_RISCV64
     return gen_arith_w(ctx, a, &gen_rem);
-#else
-    return false;
-#endif
 }
 
 static bool trans_remuw(DisasContext *ctx, arg_remuw *a)
 {
-#ifdef TARGET_RISCV64
     return gen_arith_w(ctx, a, &gen_remu);
-#else
-    return false;
-#endif
 }
+#endif /* TARGET_RISCV64 */

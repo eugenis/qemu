@@ -168,23 +168,17 @@ static bool trans_lhu(DisasContext *ctx, arg_lhu *a)
     return gen_load(ctx, a, MO_TEUW);
 }
 
+#ifdef TARGET_RISCV64
 static bool trans_lwu(DisasContext *ctx, arg_lwu *a)
 {
-#ifdef TARGET_RISCV64
     return gen_load(ctx, a, MO_TEUL);
-#else
-    return false;
-#endif
 }
 
 static bool trans_ld(DisasContext *ctx, arg_ld *a)
 {
-#ifdef TARGET_RISCV64
     return gen_load(ctx, a, MO_TEQ);
-#else
-    return false;
-#endif
 }
+#endif /* TARGET_RISCV64 */
 
 static bool gen_store(DisasContext *ctx, arg_sb *a, int memop)
 {
@@ -216,14 +210,12 @@ static bool trans_sw(DisasContext *ctx, arg_sw *a)
     return gen_store(ctx, a, MO_TESL);
 }
 
+#ifdef TARGET_RISCV64
 static bool trans_sd(DisasContext *ctx, arg_sd *a)
 {
-#ifdef TARGET_RISCV64
     return gen_store(ctx, a, MO_TEQ);
-#else
-    return false;
-#endif
 }
+#endif
 
 static bool trans_addi(DisasContext *ctx, arg_addi *a)
 {
@@ -387,20 +379,16 @@ static bool trans_and(DisasContext *ctx, arg_and *a)
     return gen_arith(ctx, a, &tcg_gen_and_tl);
 }
 
+#ifdef TARGET_RISCV64
 static bool trans_addiw(DisasContext *ctx, arg_addiw *a)
 {
-#ifdef TARGET_RISCV64
     bool res = gen_arith_imm(ctx, a, &tcg_gen_add_tl);
     tcg_gen_ext32s_tl(cpu_gpr[a->rd], cpu_gpr[a->rd]);
     return res;
-#else
-    return false;
-#endif
 }
 
 static bool trans_slliw(DisasContext *ctx, arg_slliw *a)
 {
-#ifdef TARGET_RISCV64
     TCGv source1;
     source1 = tcg_temp_new();
     gen_get_gpr(source1, a->rs1);
@@ -411,14 +399,10 @@ static bool trans_slliw(DisasContext *ctx, arg_slliw *a)
 
     tcg_temp_free(source1);
     return true;
-#else
-    return false;
-#endif
 }
 
 static bool trans_srliw(DisasContext *ctx, arg_srliw *a)
 {
-#ifdef TARGET_RISCV64
     TCGv t = tcg_temp_new();
     gen_get_gpr(t, a->rs1);
     tcg_gen_extract_tl(t, t, a->shamt, 32 - a->shamt);
@@ -427,14 +411,10 @@ static bool trans_srliw(DisasContext *ctx, arg_srliw *a)
     gen_set_gpr(a->rd, t);
     tcg_temp_free(t);
     return true;
-#else
-    return false;
-#endif
 }
 
 static bool trans_sraiw(DisasContext *ctx, arg_sraiw *a)
 {
-#ifdef TARGET_RISCV64
     TCGv t = tcg_temp_new();
     gen_get_gpr(t, a->rs1);
     tcg_gen_sextract_tl(t, t, a->shamt, 32 - a->shamt);
@@ -443,32 +423,20 @@ static bool trans_sraiw(DisasContext *ctx, arg_sraiw *a)
     gen_set_gpr(a->rd, t);
     tcg_temp_free(t);
     return true;
-#else
-    return false;
-#endif
 }
 
 static bool trans_addw(DisasContext *ctx, arg_addw *a)
 {
-#if !defined(TARGET_RISCV64)
-    return false;
-#endif
     return gen_arith(ctx, a, &tcg_gen_add_tl);
 }
 
 static bool trans_subw(DisasContext *ctx, arg_subw *a)
 {
-#if !defined(TARGET_RISCV64)
-    return false;
-#endif
     return gen_arith(ctx, a, &tcg_gen_sub_tl);
 }
 
 static bool trans_sllw(DisasContext *ctx, arg_sllw *a)
 {
-#if !defined(TARGET_RISCV64)
-    return false;
-#endif
     TCGv source1 = tcg_temp_new();
     TCGv source2 = tcg_temp_new();
 
@@ -486,9 +454,6 @@ static bool trans_sllw(DisasContext *ctx, arg_sllw *a)
 
 static bool trans_srlw(DisasContext *ctx, arg_srlw *a)
 {
-#if !defined(TARGET_RISCV64)
-    return false;
-#endif
     TCGv source1 = tcg_temp_new();
     TCGv source2 = tcg_temp_new();
 
@@ -508,9 +473,6 @@ static bool trans_srlw(DisasContext *ctx, arg_srlw *a)
 
 static bool trans_sraw(DisasContext *ctx, arg_sraw *a)
 {
-#if !defined(TARGET_RISCV64)
-    return false;
-#endif
     TCGv source1 = tcg_temp_new();
     TCGv source2 = tcg_temp_new();
 
@@ -528,6 +490,7 @@ static bool trans_sraw(DisasContext *ctx, arg_sraw *a)
     tcg_temp_free(source2);
     return true;
 }
+#endif /* TARGET_RISCV64 */
 
 static bool trans_fence(DisasContext *ctx, arg_fence *a)
 {
