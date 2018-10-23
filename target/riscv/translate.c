@@ -326,7 +326,7 @@ bool decode_insn32(DisasContext *ctx, uint32_t insn);
 /* Include the auto-generated decoder for 32 bit insn */
 #include "decode_insn32.inc.c"
 
-static bool gen_arith_imm(DisasContext *ctx, arg_arith_imm *a,
+static bool gen_arith_imm(DisasContext *ctx, arg_i *a,
                           void(*func)(TCGv, TCGv, TCGv))
 {
     TCGv source1, source2;
@@ -344,7 +344,7 @@ static bool gen_arith_imm(DisasContext *ctx, arg_arith_imm *a,
     return true;
 }
 
-static bool gen_arith(DisasContext *ctx, arg_arith *a,
+static bool gen_arith(DisasContext *ctx, arg_r *a,
                       void(*func)(TCGv, TCGv, TCGv))
 {
     TCGv source1, source2;
@@ -363,7 +363,7 @@ static bool gen_arith(DisasContext *ctx, arg_arith *a,
 }
 
 #ifdef TARGET_RISCV64
-static bool gen_arith_w(DisasContext *ctx, arg_arith *a,
+static bool gen_arith_w(DisasContext *ctx, arg_r *a,
                         void(*func)(TCGv, TCGv, TCGv))
 {
     TCGv source1, source2;
@@ -384,8 +384,8 @@ static bool gen_arith_w(DisasContext *ctx, arg_arith *a,
 }
 #endif
 
-static bool gen_shift(DisasContext *ctx, arg_arith *a,
-                        void(*func)(TCGv, TCGv, TCGv))
+static bool gen_shift(DisasContext *ctx, arg_r *a,
+                      void(*func)(TCGv, TCGv, TCGv))
 {
     TCGv source1 = tcg_temp_new();
     TCGv source2 = tcg_temp_new();

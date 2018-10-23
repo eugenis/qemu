@@ -38,17 +38,17 @@
 %imm_u    12:s20                 !function=ex_shift_12
 
 # Argument sets:
-&branch    imm rs2 rs1
-&arith_imm imm rs1 rd
-&arith     rd rs1 rs2
+&b         imm rs2 rs1
+&i         imm rs1 rd
+&r         rd rs1 rs2
 &shift     shamt rs1 rd
 &atomic    aq rl rs2 rs1 rd
 
 # Formats 32:
 
-@r       .......   ..... ..... ... ..... ....... &arith            %rs2 %rs1 %rd
-@i       ............    ..... ... ..... ....... &arith_imm imm=%imm_i  %rs1 %rd
-@b       .......   ..... ..... ... ..... ....... &branch imm=%imm_b %rs2 %rs1
+@r       .......   ..... ..... ... ..... ....... &r    %rs2 %rs1 %rd
+@i       ............    ..... ... ..... ....... &i    imm=%imm_i %rs1 %rd
+@b       .......   ..... ..... ... ..... ....... &b    imm=%imm_b %rs2 %rs1
 @s       .......   ..... ..... ... ..... .......         imm=%imm_s %rs2 %rs1
 @u       ....................      ..... .......         imm=%imm_u          %rd
 @j       ....................      ..... .......         imm=%imm_j          %rd

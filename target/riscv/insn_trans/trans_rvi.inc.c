@@ -72,7 +72,7 @@ static bool trans_jalr(DisasContext *ctx, arg_jalr *a)
     return true;
 }
 
-static bool gen_branch(DisasContext *ctx, arg_branch *a, TCGCond cond)
+static bool gen_branch(DisasContext *ctx, arg_b *a, TCGCond cond)
 {
     TCGLabel *l = gen_new_label();
     TCGv source1, source2;
