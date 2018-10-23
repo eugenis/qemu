@@ -28,18 +28,6 @@ static bool trans_c_addi4spn(DisasContext *ctx, arg_c_addi4spn *a)
     return trans_addi(ctx, &arg);
 }
 
-static bool trans_c_fld(DisasContext *ctx, arg_c_fld *a)
-{
-    arg_fld arg = { .rd = a->rd, .rs1 = a->rs1, .imm = a->uimm };
-    return trans_fld(ctx, &arg);
-}
-
-static bool trans_c_lw(DisasContext *ctx, arg_c_lw *a)
-{
-    arg_lw arg = { .rd = a->rd, .rs1 = a->rs1, .imm = a->uimm };
-    return trans_lw(ctx, &arg);
-}
-
 static bool trans_c_flw_ld(DisasContext *ctx, arg_c_flw_ld *a)
 {
 #ifdef TARGET_RISCV32
@@ -50,23 +38,10 @@ static bool trans_c_flw_ld(DisasContext *ctx, arg_c_flw_ld *a)
     return trans_flw(ctx, &arg, insn);
 #else
     /* C.LD ( RV64C/RV128C-only ) */
-    arg_c_fld tmp;
+    arg_i tmp;
     extract_cl_d(&tmp, 0); // FIXME
-    arg_ld arg = { .rd = tmp.rd, .rs1 = tmp.rs1, .imm = tmp.uimm };
-    return trans_ld(ctx, &arg);
+    return trans_ld(ctx, &tmp);
 #endif
-}
-
-static bool trans_c_fsd(DisasContext *ctx, arg_c_fsd *a)
-{
-    arg_fsd arg = { .rs1 = a->rs1, .rs2 = a->rs2, .imm = a->uimm };
-    return trans_fsd(ctx, &arg);
-}
-
-static bool trans_c_sw(DisasContext *ctx, arg_c_sw *a)
-{
-    arg_sw arg = { .rs1 = a->rs1, .rs2 = a->rs2, .imm = a->uimm };
-    return trans_sw(ctx, &arg);
 }
 
 static bool trans_c_fsw_sd(DisasContext *ctx, arg_c_fsw_sd *a)
@@ -79,10 +54,9 @@ static bool trans_c_fsw_sd(DisasContext *ctx, arg_c_fsw_sd *a)
     return trans_fsw(ctx, &arg, insn);
 #else
     /* C.SD ( RV64C/RV128C-only ) */
-    arg_c_fsd tmp;
+    arg_s tmp;
     extract_cs_d(&tmp, 0); // FIXME
-    arg_sd arg = { .rs1 = tmp.rs1, .rs2 = tmp.rs2, .imm = tmp.uimm };
-    return trans_sd(ctx, &arg);
+    return trans_sd(ctx, &tmp);
 #endif
 }
 
