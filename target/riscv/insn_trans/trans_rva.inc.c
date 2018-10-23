@@ -89,62 +89,62 @@ static bool gen_amo(DisasContext *ctx, arg_atomic *a,
     return true;
 }
 
-static bool trans_lr_w(DisasContext *ctx, arg_lr_w *a, uint32_t insn)
+static bool trans_lr_w(DisasContext *ctx, arg_lr_w *a)
 {
     return gen_lr(ctx, a, (MO_ALIGN | MO_TESL));
 }
 
-static bool trans_sc_w(DisasContext *ctx, arg_sc_w *a, uint32_t insn)
+static bool trans_sc_w(DisasContext *ctx, arg_sc_w *a)
 {
     return gen_sc(ctx, a, (MO_ALIGN | MO_TESL));
 }
 
-static bool trans_amoswap_w(DisasContext *ctx, arg_amoswap_w *a, uint32_t insn)
+static bool trans_amoswap_w(DisasContext *ctx, arg_amoswap_w *a)
 {
     return gen_amo(ctx, a, &tcg_gen_atomic_xchg_tl, (MO_ALIGN | MO_TESL));
 }
 
-static bool trans_amoadd_w(DisasContext *ctx, arg_amoadd_w *a, uint32_t insn)
+static bool trans_amoadd_w(DisasContext *ctx, arg_amoadd_w *a)
 {
     return gen_amo(ctx, a, &tcg_gen_atomic_fetch_add_tl, (MO_ALIGN | MO_TESL));
 }
 
-static bool trans_amoxor_w(DisasContext *ctx, arg_amoxor_w *a, uint32_t insn)
+static bool trans_amoxor_w(DisasContext *ctx, arg_amoxor_w *a)
 {
     return gen_amo(ctx, a, &tcg_gen_atomic_fetch_xor_tl, (MO_ALIGN | MO_TESL));
 }
 
-static bool trans_amoand_w(DisasContext *ctx, arg_amoand_w *a, uint32_t insn)
+static bool trans_amoand_w(DisasContext *ctx, arg_amoand_w *a)
 {
     return gen_amo(ctx, a, &tcg_gen_atomic_fetch_and_tl, (MO_ALIGN | MO_TESL));
 }
 
-static bool trans_amoor_w(DisasContext *ctx, arg_amoor_w *a, uint32_t insn)
+static bool trans_amoor_w(DisasContext *ctx, arg_amoor_w *a)
 {
     return gen_amo(ctx, a, &tcg_gen_atomic_fetch_or_tl, (MO_ALIGN | MO_TESL));
 }
 
-static bool trans_amomin_w(DisasContext *ctx, arg_amomin_w *a, uint32_t insn)
+static bool trans_amomin_w(DisasContext *ctx, arg_amomin_w *a)
 {
     return gen_amo(ctx, a, &tcg_gen_atomic_fetch_smin_tl, (MO_ALIGN | MO_TESL));
 }
 
-static bool trans_amomax_w(DisasContext *ctx, arg_amomax_w *a, uint32_t insn)
+static bool trans_amomax_w(DisasContext *ctx, arg_amomax_w *a)
 {
     return gen_amo(ctx, a, &tcg_gen_atomic_fetch_smax_tl, (MO_ALIGN | MO_TESL));
 }
 
-static bool trans_amominu_w(DisasContext *ctx, arg_amominu_w *a, uint32_t insn)
+static bool trans_amominu_w(DisasContext *ctx, arg_amominu_w *a)
 {
     return gen_amo(ctx, a, &tcg_gen_atomic_fetch_umin_tl, (MO_ALIGN | MO_TESL));
 }
 
-static bool trans_amomaxu_w(DisasContext *ctx, arg_amomaxu_w *a, uint32_t insn)
+static bool trans_amomaxu_w(DisasContext *ctx, arg_amomaxu_w *a)
 {
     return gen_amo(ctx, a, &tcg_gen_atomic_fetch_umax_tl, (MO_ALIGN | MO_TESL));
 }
 
-static bool trans_lr_d(DisasContext *ctx, arg_lr_d *a, uint32_t insn)
+static bool trans_lr_d(DisasContext *ctx, arg_lr_d *a)
 {
 #ifdef TARGET_RISCV64
     return gen_lr(ctx, a, MO_ALIGN | MO_TEQ);
@@ -153,7 +153,7 @@ static bool trans_lr_d(DisasContext *ctx, arg_lr_d *a, uint32_t insn)
 #endif
 }
 
-static bool trans_sc_d(DisasContext *ctx, arg_sc_d *a, uint32_t insn)
+static bool trans_sc_d(DisasContext *ctx, arg_sc_d *a)
 {
 #ifdef TARGET_RISCV64
     return gen_sc(ctx, a, (MO_ALIGN | MO_TEQ));
@@ -162,7 +162,7 @@ static bool trans_sc_d(DisasContext *ctx, arg_sc_d *a, uint32_t insn)
 #endif
 }
 
-static bool trans_amoswap_d(DisasContext *ctx, arg_amoswap_d *a, uint32_t insn)
+static bool trans_amoswap_d(DisasContext *ctx, arg_amoswap_d *a)
 {
 #ifdef TARGET_RISCV64
     return gen_amo(ctx, a, &tcg_gen_atomic_xchg_tl, (MO_ALIGN | MO_TEQ));
@@ -171,7 +171,7 @@ static bool trans_amoswap_d(DisasContext *ctx, arg_amoswap_d *a, uint32_t insn)
 #endif
 }
 
-static bool trans_amoadd_d(DisasContext *ctx, arg_amoadd_d *a, uint32_t insn)
+static bool trans_amoadd_d(DisasContext *ctx, arg_amoadd_d *a)
 {
 #ifdef TARGET_RISCV64
     return gen_amo(ctx, a, &tcg_gen_atomic_fetch_add_tl, (MO_ALIGN | MO_TEQ));
@@ -180,7 +180,7 @@ static bool trans_amoadd_d(DisasContext *ctx, arg_amoadd_d *a, uint32_t insn)
 #endif
 }
 
-static bool trans_amoxor_d(DisasContext *ctx, arg_amoxor_d *a, uint32_t insn)
+static bool trans_amoxor_d(DisasContext *ctx, arg_amoxor_d *a)
 {
 #ifdef TARGET_RISCV64
     return gen_amo(ctx, a, &tcg_gen_atomic_fetch_xor_tl, (MO_ALIGN | MO_TEQ));
@@ -189,7 +189,7 @@ static bool trans_amoxor_d(DisasContext *ctx, arg_amoxor_d *a, uint32_t insn)
 #endif
 }
 
-static bool trans_amoand_d(DisasContext *ctx, arg_amoand_d *a, uint32_t insn)
+static bool trans_amoand_d(DisasContext *ctx, arg_amoand_d *a)
 {
 #ifdef TARGET_RISCV64
     return gen_amo(ctx, a, &tcg_gen_atomic_fetch_and_tl, (MO_ALIGN | MO_TEQ));
@@ -198,7 +198,7 @@ static bool trans_amoand_d(DisasContext *ctx, arg_amoand_d *a, uint32_t insn)
 #endif
 }
 
-static bool trans_amoor_d(DisasContext *ctx, arg_amoor_d *a, uint32_t insn)
+static bool trans_amoor_d(DisasContext *ctx, arg_amoor_d *a)
 {
 #ifdef TARGET_RISCV64
     return gen_amo(ctx, a, &tcg_gen_atomic_fetch_or_tl, (MO_ALIGN | MO_TEQ));
@@ -207,7 +207,7 @@ static bool trans_amoor_d(DisasContext *ctx, arg_amoor_d *a, uint32_t insn)
 #endif
 }
 
-static bool trans_amomin_d(DisasContext *ctx, arg_amomin_d *a, uint32_t insn)
+static bool trans_amomin_d(DisasContext *ctx, arg_amomin_d *a)
 {
 #ifdef TARGET_RISCV64
     return gen_amo(ctx, a, &tcg_gen_atomic_fetch_smin_tl, (MO_ALIGN | MO_TEQ));
@@ -216,7 +216,7 @@ static bool trans_amomin_d(DisasContext *ctx, arg_amomin_d *a, uint32_t insn)
 #endif
 }
 
-static bool trans_amomax_d(DisasContext *ctx, arg_amomax_d *a, uint32_t insn)
+static bool trans_amomax_d(DisasContext *ctx, arg_amomax_d *a)
 {
 #ifdef TARGET_RISCV64
     return gen_amo(ctx, a, &tcg_gen_atomic_fetch_smax_tl, (MO_ALIGN | MO_TEQ));
@@ -225,7 +225,7 @@ static bool trans_amomax_d(DisasContext *ctx, arg_amomax_d *a, uint32_t insn)
 #endif
 }
 
-static bool trans_amominu_d(DisasContext *ctx, arg_amominu_d *a, uint32_t insn)
+static bool trans_amominu_d(DisasContext *ctx, arg_amominu_d *a)
 {
 #ifdef TARGET_RISCV64
     return gen_amo(ctx, a, &tcg_gen_atomic_fetch_umin_tl, (MO_ALIGN | MO_TEQ));
@@ -234,7 +234,7 @@ static bool trans_amominu_d(DisasContext *ctx, arg_amominu_d *a, uint32_t insn)
 #endif
 }
 
-static bool trans_amomaxu_d(DisasContext *ctx, arg_amomaxu_d *a, uint32_t insn)
+static bool trans_amomaxu_d(DisasContext *ctx, arg_amomaxu_d *a)
 {
 #ifdef TARGET_RISCV64
     return gen_amo(ctx, a, &tcg_gen_atomic_fetch_umax_tl, (MO_ALIGN | MO_TEQ));

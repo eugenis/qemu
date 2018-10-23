@@ -19,12 +19,12 @@
  */
 
 
-static bool trans_mul(DisasContext *ctx, arg_mul *a, uint32_t insn)
+static bool trans_mul(DisasContext *ctx, arg_mul *a)
 {
     return gen_arith(ctx, a, &tcg_gen_mul_tl);
 }
 
-static bool trans_mulh(DisasContext *ctx, arg_mulh *a, uint32_t insn)
+static bool trans_mulh(DisasContext *ctx, arg_mulh *a)
 {
     TCGv source1 = tcg_temp_new();
     TCGv source2 = tcg_temp_new();
@@ -39,12 +39,12 @@ static bool trans_mulh(DisasContext *ctx, arg_mulh *a, uint32_t insn)
     return true;
 }
 
-static bool trans_mulhsu(DisasContext *ctx, arg_mulhsu *a, uint32_t insn)
+static bool trans_mulhsu(DisasContext *ctx, arg_mulhsu *a)
 {
     return gen_arith(ctx, a, &gen_mulhsu);
 }
 
-static bool trans_mulhu(DisasContext *ctx, arg_mulhu *a, uint32_t insn)
+static bool trans_mulhu(DisasContext *ctx, arg_mulhu *a)
 {
     TCGv source1 = tcg_temp_new();
     TCGv source2 = tcg_temp_new();
@@ -59,27 +59,27 @@ static bool trans_mulhu(DisasContext *ctx, arg_mulhu *a, uint32_t insn)
     return true;
 }
 
-static bool trans_div(DisasContext *ctx, arg_div *a, uint32_t insn)
+static bool trans_div(DisasContext *ctx, arg_div *a)
 {
     return gen_arith(ctx, a, &gen_div);
 }
 
-static bool trans_divu(DisasContext *ctx, arg_divu *a, uint32_t insn)
+static bool trans_divu(DisasContext *ctx, arg_divu *a)
 {
     return gen_arith(ctx, a, &gen_divu);
 }
 
-static bool trans_rem(DisasContext *ctx, arg_rem *a, uint32_t insn)
+static bool trans_rem(DisasContext *ctx, arg_rem *a)
 {
     return gen_arith(ctx, a, &gen_rem);
 }
 
-static bool trans_remu(DisasContext *ctx, arg_remu *a, uint32_t insn)
+static bool trans_remu(DisasContext *ctx, arg_remu *a)
 {
     return gen_arith(ctx, a, &gen_remu);
 }
 
-static bool trans_mulw(DisasContext *ctx, arg_mulw *a, uint32_t insn)
+static bool trans_mulw(DisasContext *ctx, arg_mulw *a)
 {
 #ifdef TARGET_RISCV64
     return gen_arith(ctx, a, &tcg_gen_mul_tl);
@@ -88,7 +88,7 @@ static bool trans_mulw(DisasContext *ctx, arg_mulw *a, uint32_t insn)
 #endif
 }
 
-static bool trans_divw(DisasContext *ctx, arg_divw *a, uint32_t insn)
+static bool trans_divw(DisasContext *ctx, arg_divw *a)
 {
 #ifdef TARGET_RISCV64
     return gen_arith_w(ctx, a, &gen_div);
@@ -97,7 +97,7 @@ static bool trans_divw(DisasContext *ctx, arg_divw *a, uint32_t insn)
 #endif
 }
 
-static bool trans_divuw(DisasContext *ctx, arg_divuw *a, uint32_t insn)
+static bool trans_divuw(DisasContext *ctx, arg_divuw *a)
 {
 #ifdef TARGET_RISCV64
     return gen_arith_w(ctx, a, &gen_divu);
@@ -106,7 +106,7 @@ static bool trans_divuw(DisasContext *ctx, arg_divuw *a, uint32_t insn)
 #endif
 }
 
-static bool trans_remw(DisasContext *ctx, arg_remw *a, uint32_t insn)
+static bool trans_remw(DisasContext *ctx, arg_remw *a)
 {
 #ifdef TARGET_RISCV64
     return gen_arith_w(ctx, a, &gen_rem);
@@ -115,7 +115,7 @@ static bool trans_remw(DisasContext *ctx, arg_remw *a, uint32_t insn)
 #endif
 }
 
-static bool trans_remuw(DisasContext *ctx, arg_remuw *a, uint32_t insn)
+static bool trans_remuw(DisasContext *ctx, arg_remuw *a)
 {
 #ifdef TARGET_RISCV64
     return gen_arith_w(ctx, a, &gen_remu);

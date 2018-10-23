@@ -18,7 +18,7 @@
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-static bool trans_ecall(DisasContext *ctx, arg_ecall *a, uint32_t insn)
+static bool trans_ecall(DisasContext *ctx, arg_ecall *a)
 {
     /* always generates U-level ECALL, fixed in do_interrupt handler */
     generate_exception(ctx, RISCV_EXCP_U_ECALL);
@@ -27,7 +27,7 @@ static bool trans_ecall(DisasContext *ctx, arg_ecall *a, uint32_t insn)
     return true;
 }
 
-static bool trans_ebreak(DisasContext *ctx, arg_ebreak *a, uint32_t insn)
+static bool trans_ebreak(DisasContext *ctx, arg_ebreak *a)
 {
     generate_exception(ctx, RISCV_EXCP_BREAKPOINT);
     tcg_gen_exit_tb(NULL, 0); /* no chaining */
@@ -35,13 +35,13 @@ static bool trans_ebreak(DisasContext *ctx, arg_ebreak *a, uint32_t insn)
     return true;
 }
 
-static bool trans_uret(DisasContext *ctx, arg_uret *a, uint32_t insn)
+static bool trans_uret(DisasContext *ctx, arg_uret *a)
 {
     gen_exception_illegal(ctx);
     return true;
 }
 
-static bool trans_sret(DisasContext *ctx, arg_sret *a, uint32_t insn)
+static bool trans_sret(DisasContext *ctx, arg_sret *a)
 {
 #ifndef CONFIG_USER_ONLY
     tcg_gen_movi_tl(cpu_pc, ctx->base.pc_next);
@@ -59,13 +59,13 @@ static bool trans_sret(DisasContext *ctx, arg_sret *a, uint32_t insn)
 #endif
 }
 
-static bool trans_hret(DisasContext *ctx, arg_hret *a, uint32_t insn)
+static bool trans_hret(DisasContext *ctx, arg_hret *a)
 {
     gen_exception_illegal(ctx);
     return true;
 }
 
-static bool trans_mret(DisasContext *ctx, arg_mret *a, uint32_t insn)
+static bool trans_mret(DisasContext *ctx, arg_mret *a)
 {
 #ifndef CONFIG_USER_ONLY
     tcg_gen_movi_tl(cpu_pc, ctx->base.pc_next);
@@ -78,7 +78,7 @@ static bool trans_mret(DisasContext *ctx, arg_mret *a, uint32_t insn)
 #endif
 }
 
-static bool trans_wfi(DisasContext *ctx, arg_wfi *a, uint32_t insn)
+static bool trans_wfi(DisasContext *ctx, arg_wfi *a)
 {
 #ifndef CONFIG_USER_ONLY
     tcg_gen_movi_tl(cpu_pc, ctx->pc_succ_insn);
@@ -89,8 +89,7 @@ static bool trans_wfi(DisasContext *ctx, arg_wfi *a, uint32_t insn)
 #endif
 }
 
-static bool trans_sfence_vma(DisasContext *ctx, arg_sfence_vma *a,
-                             uint32_t insn)
+static bool trans_sfence_vma(DisasContext *ctx, arg_sfence_vma *a)
 {
 #ifndef CONFIG_USER_ONLY
     gen_helper_tlb_flush(cpu_env);
@@ -100,7 +99,7 @@ static bool trans_sfence_vma(DisasContext *ctx, arg_sfence_vma *a,
 #endif
 }
 
-static bool trans_sfence_vm(DisasContext *ctx, arg_sfence_vm *a, uint32_t insn)
+static bool trans_sfence_vm(DisasContext *ctx, arg_sfence_vm *a)
 {
 #ifndef CONFIG_USER_ONLY
     gen_helper_tlb_flush(cpu_env);

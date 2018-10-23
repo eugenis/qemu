@@ -18,7 +18,7 @@
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-static bool trans_fld(DisasContext *ctx, arg_fld *a, uint32_t insn)
+static bool trans_fld(DisasContext *ctx, arg_fld *a)
 {
     TCGv t0 = tcg_temp_new();
     gen_get_gpr(t0, a->rs1);
@@ -31,7 +31,7 @@ static bool trans_fld(DisasContext *ctx, arg_fld *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fsd(DisasContext *ctx, arg_fsd *a, uint32_t insn)
+static bool trans_fsd(DisasContext *ctx, arg_fsd *a)
 {
     TCGv t0 = tcg_temp_new();
     gen_get_gpr(t0, a->rs1);
@@ -44,7 +44,7 @@ static bool trans_fsd(DisasContext *ctx, arg_fsd *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fmadd_d(DisasContext *ctx, arg_fmadd_d *a, uint32_t insn)
+static bool trans_fmadd_d(DisasContext *ctx, arg_fmadd_d *a)
 {
     REQUIRE_FPU;
     gen_set_rm(ctx, a->rm);
@@ -53,7 +53,7 @@ static bool trans_fmadd_d(DisasContext *ctx, arg_fmadd_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fmsub_d(DisasContext *ctx, arg_fmsub_d *a, uint32_t insn)
+static bool trans_fmsub_d(DisasContext *ctx, arg_fmsub_d *a)
 {
     REQUIRE_FPU;
     gen_set_rm(ctx, a->rm);
@@ -62,7 +62,7 @@ static bool trans_fmsub_d(DisasContext *ctx, arg_fmsub_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fnmsub_d(DisasContext *ctx, arg_fnmsub_d *a, uint32_t insn)
+static bool trans_fnmsub_d(DisasContext *ctx, arg_fnmsub_d *a)
 {
     REQUIRE_FPU;
     gen_set_rm(ctx, a->rm);
@@ -71,7 +71,7 @@ static bool trans_fnmsub_d(DisasContext *ctx, arg_fnmsub_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fnmadd_d(DisasContext *ctx, arg_fnmadd_d *a, uint32_t insn)
+static bool trans_fnmadd_d(DisasContext *ctx, arg_fnmadd_d *a)
 {
     REQUIRE_FPU;
     gen_set_rm(ctx, a->rm);
@@ -80,7 +80,7 @@ static bool trans_fnmadd_d(DisasContext *ctx, arg_fnmadd_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fadd_d(DisasContext *ctx, arg_fadd_d *a, uint32_t insn)
+static bool trans_fadd_d(DisasContext *ctx, arg_fadd_d *a)
 {
     REQUIRE_FPU;
 
@@ -91,7 +91,7 @@ static bool trans_fadd_d(DisasContext *ctx, arg_fadd_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fsub_d(DisasContext *ctx, arg_fsub_d *a, uint32_t insn)
+static bool trans_fsub_d(DisasContext *ctx, arg_fsub_d *a)
 {
     REQUIRE_FPU;
 
@@ -102,7 +102,7 @@ static bool trans_fsub_d(DisasContext *ctx, arg_fsub_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fmul_d(DisasContext *ctx, arg_fmul_d *a, uint32_t insn)
+static bool trans_fmul_d(DisasContext *ctx, arg_fmul_d *a)
 {
     REQUIRE_FPU;
 
@@ -113,7 +113,7 @@ static bool trans_fmul_d(DisasContext *ctx, arg_fmul_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fdiv_d(DisasContext *ctx, arg_fdiv_d *a, uint32_t insn)
+static bool trans_fdiv_d(DisasContext *ctx, arg_fdiv_d *a)
 {
     REQUIRE_FPU;
 
@@ -124,7 +124,7 @@ static bool trans_fdiv_d(DisasContext *ctx, arg_fdiv_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fsqrt_d(DisasContext *ctx, arg_fsqrt_d *a, uint32_t insn)
+static bool trans_fsqrt_d(DisasContext *ctx, arg_fsqrt_d *a)
 {
     REQUIRE_FPU;
 
@@ -134,7 +134,7 @@ static bool trans_fsqrt_d(DisasContext *ctx, arg_fsqrt_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fsgnj_d(DisasContext *ctx, arg_fsgnj_d *a, uint32_t insn)
+static bool trans_fsgnj_d(DisasContext *ctx, arg_fsgnj_d *a)
 {
     if (a->rs1 == a->rs2) { /* FMOV */
         tcg_gen_mov_i64(cpu_fpr[a->rd], cpu_fpr[a->rs1]);
@@ -145,7 +145,7 @@ static bool trans_fsgnj_d(DisasContext *ctx, arg_fsgnj_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fsgnjn_d(DisasContext *ctx, arg_fsgnjn_d *a, uint32_t insn)
+static bool trans_fsgnjn_d(DisasContext *ctx, arg_fsgnjn_d *a)
 {
     REQUIRE_FPU;
     if (a->rs1 == a->rs2) { /* FNEG */
@@ -159,7 +159,7 @@ static bool trans_fsgnjn_d(DisasContext *ctx, arg_fsgnjn_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fsgnjx_d(DisasContext *ctx, arg_fsgnjx_d *a, uint32_t insn)
+static bool trans_fsgnjx_d(DisasContext *ctx, arg_fsgnjx_d *a)
 {
     REQUIRE_FPU;
     if (a->rs1 == a->rs2) { /* FABS */
@@ -173,7 +173,7 @@ static bool trans_fsgnjx_d(DisasContext *ctx, arg_fsgnjx_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fmin_d(DisasContext *ctx, arg_fmin_d *a, uint32_t insn)
+static bool trans_fmin_d(DisasContext *ctx, arg_fmin_d *a)
 {
     REQUIRE_FPU;
 
@@ -183,7 +183,7 @@ static bool trans_fmin_d(DisasContext *ctx, arg_fmin_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fmax_d(DisasContext *ctx, arg_fmax_d *a, uint32_t insn)
+static bool trans_fmax_d(DisasContext *ctx, arg_fmax_d *a)
 {
     REQUIRE_FPU;
 
@@ -193,7 +193,7 @@ static bool trans_fmax_d(DisasContext *ctx, arg_fmax_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fcvt_s_d(DisasContext *ctx, arg_fcvt_s_d *a, uint32_t insn)
+static bool trans_fcvt_s_d(DisasContext *ctx, arg_fcvt_s_d *a)
 {
     REQUIRE_FPU;
 
@@ -203,7 +203,7 @@ static bool trans_fcvt_s_d(DisasContext *ctx, arg_fcvt_s_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fcvt_d_s(DisasContext *ctx, arg_fcvt_d_s *a, uint32_t insn)
+static bool trans_fcvt_d_s(DisasContext *ctx, arg_fcvt_d_s *a)
 {
     REQUIRE_FPU;
 
@@ -213,7 +213,7 @@ static bool trans_fcvt_d_s(DisasContext *ctx, arg_fcvt_d_s *a, uint32_t insn)
     return true;
 }
 
-static bool trans_feq_d(DisasContext *ctx, arg_feq_d *a, uint32_t insn)
+static bool trans_feq_d(DisasContext *ctx, arg_feq_d *a)
 {
     REQUIRE_FPU;
 
@@ -225,7 +225,7 @@ static bool trans_feq_d(DisasContext *ctx, arg_feq_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_flt_d(DisasContext *ctx, arg_flt_d *a, uint32_t insn)
+static bool trans_flt_d(DisasContext *ctx, arg_flt_d *a)
 {
     REQUIRE_FPU;
 
@@ -237,7 +237,7 @@ static bool trans_flt_d(DisasContext *ctx, arg_flt_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fle_d(DisasContext *ctx, arg_fle_d *a, uint32_t insn)
+static bool trans_fle_d(DisasContext *ctx, arg_fle_d *a)
 {
     REQUIRE_FPU;
 
@@ -249,7 +249,7 @@ static bool trans_fle_d(DisasContext *ctx, arg_fle_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fclass_d(DisasContext *ctx, arg_fclass_d *a, uint32_t insn)
+static bool trans_fclass_d(DisasContext *ctx, arg_fclass_d *a)
 {
 #if defined(TARGET_RISCV64)
     REQUIRE_FPU;
@@ -264,7 +264,7 @@ static bool trans_fclass_d(DisasContext *ctx, arg_fclass_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fcvt_w_d(DisasContext *ctx, arg_fcvt_w_d *a, uint32_t insn)
+static bool trans_fcvt_w_d(DisasContext *ctx, arg_fcvt_w_d *a)
 {
     REQUIRE_FPU;
 
@@ -277,7 +277,7 @@ static bool trans_fcvt_w_d(DisasContext *ctx, arg_fcvt_w_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fcvt_wu_d(DisasContext *ctx, arg_fcvt_wu_d *a, uint32_t insn)
+static bool trans_fcvt_wu_d(DisasContext *ctx, arg_fcvt_wu_d *a)
 {
     REQUIRE_FPU;
 
@@ -290,7 +290,7 @@ static bool trans_fcvt_wu_d(DisasContext *ctx, arg_fcvt_wu_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fcvt_d_w(DisasContext *ctx, arg_fcvt_d_w *a, uint32_t insn)
+static bool trans_fcvt_d_w(DisasContext *ctx, arg_fcvt_d_w *a)
 {
     REQUIRE_FPU;
 
@@ -304,7 +304,7 @@ static bool trans_fcvt_d_w(DisasContext *ctx, arg_fcvt_d_w *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fcvt_d_wu(DisasContext *ctx, arg_fcvt_d_wu *a, uint32_t insn)
+static bool trans_fcvt_d_wu(DisasContext *ctx, arg_fcvt_d_wu *a)
 {
     REQUIRE_FPU;
 
@@ -318,7 +318,7 @@ static bool trans_fcvt_d_wu(DisasContext *ctx, arg_fcvt_d_wu *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fcvt_l_d(DisasContext *ctx, arg_fcvt_l_d *a, uint32_t insn)
+static bool trans_fcvt_l_d(DisasContext *ctx, arg_fcvt_l_d *a)
 {
 #if defined(TARGET_RISCV64)
     REQUIRE_FPU;
@@ -334,7 +334,7 @@ static bool trans_fcvt_l_d(DisasContext *ctx, arg_fcvt_l_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fcvt_lu_d(DisasContext *ctx, arg_fcvt_lu_d *a, uint32_t insn)
+static bool trans_fcvt_lu_d(DisasContext *ctx, arg_fcvt_lu_d *a)
 {
 #if defined(TARGET_RISCV64)
     REQUIRE_FPU;
@@ -350,7 +350,7 @@ static bool trans_fcvt_lu_d(DisasContext *ctx, arg_fcvt_lu_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fmv_x_d(DisasContext *ctx, arg_fmv_x_d *a, uint32_t insn)
+static bool trans_fmv_x_d(DisasContext *ctx, arg_fmv_x_d *a)
 {
 #if defined(TARGET_RISCV64)
     REQUIRE_FPU;
@@ -362,7 +362,7 @@ static bool trans_fmv_x_d(DisasContext *ctx, arg_fmv_x_d *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fcvt_d_l(DisasContext *ctx, arg_fcvt_d_l *a, uint32_t insn)
+static bool trans_fcvt_d_l(DisasContext *ctx, arg_fcvt_d_l *a)
 {
 #if defined(TARGET_RISCV64)
     REQUIRE_FPU;
@@ -379,7 +379,7 @@ static bool trans_fcvt_d_l(DisasContext *ctx, arg_fcvt_d_l *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fcvt_d_lu(DisasContext *ctx, arg_fcvt_d_lu *a, uint32_t insn)
+static bool trans_fcvt_d_lu(DisasContext *ctx, arg_fcvt_d_lu *a)
 {
 #if defined(TARGET_RISCV64)
     REQUIRE_FPU;
@@ -396,7 +396,7 @@ static bool trans_fcvt_d_lu(DisasContext *ctx, arg_fcvt_d_lu *a, uint32_t insn)
     return true;
 }
 
-static bool trans_fmv_d_x(DisasContext *ctx, arg_fmv_d_x *a, uint32_t insn)
+static bool trans_fmv_d_x(DisasContext *ctx, arg_fmv_d_x *a)
 {
 #if defined(TARGET_RISCV64)
     REQUIRE_FPU;
