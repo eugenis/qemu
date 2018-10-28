@@ -152,6 +152,8 @@ typedef struct CPUTLBDesc {
     target_ulong large_page_mask;
     /* The next index to use in the tlb victim table.  */
     size_t vindex;
+    /* The current ASID for this tlb.  */
+    uint32_t asid;
 } CPUTLBDesc;
 
 /*
