@@ -390,3 +390,79 @@ static void tcg_out_opc_jump(TCGContext *s, RISCVInsn opc,
 {
     tcg_out32(s, encode_uj(opc, rd, imm));
 }
+
+/*
+ * Relocations
+ */
+
+static void reloc_sbimm12(tcg_insn_unit *code_ptr, tcg_insn_unit *target)
+{
+    intptr_t offset = (intptr_t)target - (intptr_t)code_ptr;
+    tcg_debug_assert(offset == sextract_target(offset, 1, 12) << 1);
+
+    code_ptr[0] |= encode_sbimm12(offset);
+}
+
+static void reloc_jimm20(tcg_insn_unit *code_ptr, tcg_insn_unit *target)
+{
+    intptr_t offset = (intptr_t)target - (intptr_t)code_ptr;
+    tcg_debug_assert(offset == sextract_target(offset, 1, 20) << 1);
+
+    code_ptr[0] |= encode_ujimm12(offset);
+}
+
+static void reloc_call(tcg_insn_unit *code_ptr, tcg_insn_unit *target)
+{
+    intptr_t offset = (intptr_t)target - (intptr_t)code_ptr;
+    tcg_debug_assert(offset == (int32_t)offset);
+
+    int32_t hi20 = ((offset + 0x800) >> 12) << 12;
+    int32_t lo12 = offset - hi20;
+
+    code_ptr[0] |= encode_uimm20(hi20);
+    code_ptr[1] |= encode_imm12(lo12);
+}
+
+static void patch_reloc(tcg_insn_unit *code_ptr, int type,
+                        intptr_t value, intptr_t addend)
+{
+    uint32_t insn = *code_ptr;
+    intptr_t diff;
+    bool short_jmp;
+
+    tcg_debug_assert(addend == 0);
+
+    switch (type) {
+    case R_RISCV_BRANCH:
+        diff = value - (uintptr_t)code_ptr;
+        short_jmp = diff == sextract_target(diff, 0, 12);
+
+        if (short_jmp) {
+            reloc_sbimm12(code_ptr, (tcg_insn_unit *)value);
+        } else {
+            /* Invert the condition */
+            insn = insn ^ (1 << 12);
+            /* Clear the offset */
+            insn &= 0xFFF;
+            /* Set the offset to the PC + 8 */
+            reloc_sbimm12(code_ptr, code_ptr + 2);
+
+            /* Move forward */
+            code_ptr++;
+            insn = *code_ptr;
+
+            /* Overwrite the NOP with jal x0,value */
+            code_ptr[1] = encode_uj(OPC_JAL, TCG_REG_ZERO, 0);
+            reloc_jimm20(code_ptr + 1, (tcg_insn_unit *)value);
+        }
+        break;
+    case R_RISCV_JAL:
+        reloc_jimm20(code_ptr, (tcg_insn_unit *)value);
+        break;
+    case R_RISCV_CALL:
+        reloc_call(code_ptr, (tcg_insn_unit *)value);
+        break;
+    default:
+        tcg_abort();
+    }
+}
