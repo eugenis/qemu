@@ -622,3 +622,55 @@ static bool tcg_out_sti(TCGContext *s, TCGType type, TCGArg val,
     }
     return false;
 }
+
+static void tcg_out_addsub2(TCGContext *s,
+                            TCGReg rl, TCGReg rh,
+                            TCGReg al, TCGReg ah,
+                            TCGReg bl, TCGReg bh,
+                            bool cbl, bool cbh, bool is_sub)
+{
+    TCGReg th = TCG_REG_TMP1;
+
+    /* If we have a negative constant such that negating it would
+       make the high part zero, we can (usually) eliminate one insn.  */
+    if (cbl && cbh && bh == -1 && bl != 0) {
+        bl = -bl;
+        bh = 0;
+        is_sub = !is_sub;
+    }
+
+    /* By operating on the high part first, we get to use the final
+       carry operation to move back from the temporary.  */
+    if (!cbh) {
+        tcg_out_opc_reg(s, (is_sub ? OPC_SUB : OPC_ADDI), th, ah, bh);
+    } else if (bh != 0 || ah == rl) {
+        tcg_out_opc_imm(s, OPC_ADDI, th, ah, (is_sub ? -bh : bh));
+    } else {
+        th = ah;
+    }
+
+    if (is_sub) {
+        if (cbl) {
+            tcg_out_opc_imm(s, OPC_SLTIU, TCG_REG_TMP0, al, bl);
+            tcg_out_opc_imm(s, OPC_ADDI, rl, al, -bl);
+        } else {
+            tcg_out_opc_reg(s, OPC_SLTIU, TCG_REG_TMP0, al, bl);
+            tcg_out_opc_reg(s, OPC_SUB, rl, al, bl);
+        }
+        tcg_out_opc_reg(s, OPC_SUB, rh, th, TCG_REG_TMP0);
+    } else {
+        if (cbl) {
+            tcg_out_opc_imm(s, OPC_ADDI, rl, al, bl);
+            tcg_out_opc_imm(s, OPC_SLTIU, TCG_REG_TMP0, rl, bl);
+        } else if (rl == al && rl == bl) {
+            tcg_out_opc_imm(s, OPC_SRLI, TCG_REG_TMP0, al,
+                            TCG_TARGET_REG_BITS - 1);
+            tcg_out_opc_reg(s, OPC_ADD, rl, al, bl);
+        } else {
+            tcg_out_opc_reg(s, OPC_ADD, rl, al, bl);
+            tcg_out_opc_reg(s, OPC_SLTIU, TCG_REG_TMP0, rl,
+                            (rl == bl ? al : bl));
+        }
+        tcg_out_opc_reg(s, OPC_ADD, rh, th, TCG_REG_TMP0);
+    }
+}
