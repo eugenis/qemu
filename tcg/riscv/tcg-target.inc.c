@@ -474,7 +474,7 @@ static void patch_reloc(tcg_insn_unit *code_ptr, int type,
             /* Invert the condition */
             insn = insn ^ (1 << 12);
             /* Clear the offset */
-            insn &= 0xFFF;
+            insn &= 0x01fff07f;
             /* Set the offset to the PC + 8 */
             insn |= encode_sbimm12(8);
 
@@ -484,7 +484,7 @@ static void patch_reloc(tcg_insn_unit *code_ptr, int type,
             /* Overwrite the NOP with jal x0,value */
             diff = value - (uintptr_t)(code_ptr + 1);
             insn = encode_uj(OPC_JAL, TCG_REG_ZERO, diff);
-            *code_ptr = insn;
+            code_ptr[1] = insn;
         }
         break;
     case R_RISCV_JAL:
