@@ -135,23 +135,15 @@ static inline tcg_target_long sextreg(tcg_target_long val, int pos, int len)
 static const char *target_parse_constraint(TCGArgConstraint *ct,
                                            const char *ct_str, TCGType type)
 {
-    switch (*ct_str++) {
+    char c = *ct_str++;
+    switch (c) {
+    case 'A' ... 'H':
+        ct->ct |= TCG_CT_REG;
+        ct->u.regs = 1u << (TCG_REG_A0 + c - 'A');
+        break;
     case 'r':
         ct->ct |= TCG_CT_REG;
         ct->u.regs = 0xffffffff;
-        break;
-    case 'L':
-        /* qemu_ld/qemu_st constraint */
-        ct->ct |= TCG_CT_REG;
-        ct->u.regs = 0xffffffff;
-        /* qemu_ld/qemu_st uses TCG_REG_TMP0 */
-#if defined(CONFIG_SOFTMMU)
-        tcg_regset_reset_reg(ct->u.regs, tcg_target_call_iarg_regs[0]);
-        tcg_regset_reset_reg(ct->u.regs, tcg_target_call_iarg_regs[1]);
-        tcg_regset_reset_reg(ct->u.regs, tcg_target_call_iarg_regs[2]);
-        tcg_regset_reset_reg(ct->u.regs, tcg_target_call_iarg_regs[3]);
-        tcg_regset_reset_reg(ct->u.regs, tcg_target_call_iarg_regs[4]);
-#endif
         break;
     case 'I':
         ct->ct |= TCG_CT_CONST_S12;
@@ -903,8 +895,76 @@ static void tcg_out_mb(TCGContext *s, TCGArg a0)
  * Load/store and TLB
  */
 
-#if defined(CONFIG_SOFTMMU)
-#include "tcg-ldst.inc.c"
+static const RISCVInsn ld_op[8] = {
+    [MO_SB] = OPC_LB,
+    [MO_UB] = OPC_LBU,
+    [MO_SW] = OPC_LH,
+    [MO_UW] = OPC_LHU,
+    [MO_SL] = OPC_LW,
+    [MO_UL] = OPC_LWU,
+    [MO_Q] = OPC_LD,
+};
+
+static const RISCVInsn st_op[4] = {
+    [MO_8] = OPC_SB,
+    [MO_16] = OPC_SH,
+    [MO_32] = OPC_SW,
+    [MO_64] = OPC_SD,
+};
+
+static void tcg_out_qemu_ld_direct(TCGContext *s, TCGReg lo, TCGReg hi,
+                                   TCGReg base, TCGMemOp opc, bool is_64)
+{
+    const TCGMemOp bswap = opc & MO_BSWAP;
+    RISCVInsn insn;
+
+    /* We don't yet handle byteswapping, assert */
+    tcg_debug_assert(!bswap);
+    opc &= MO_SSIZE;
+
+    if (TCG_TARGET_REG_BITS == 32 && opc == MO_Q) {
+        if (lo != base) {
+            tcg_out_opc_imm(s, OPC_LW, lo, base, 0);
+            tcg_out_opc_imm(s, OPC_LW, hi, base, 4);
+        } else {
+            tcg_out_opc_imm(s, OPC_LW, hi, base, 4);
+            tcg_out_opc_imm(s, OPC_LW, lo, base, 0);
+        }
+        return;
+    }
+
+    insn = ld_op[opc];
+    if (TCG_TARGET_REG_BITS == 64 && !is_64 && opc == MO_UL) {
+        insn = OPC_LW;
+    }
+    tcg_debug_assert(insn != 0);
+    tcg_out_opc_imm(s, insn, lo, base, 0);
+}
+
+static void tcg_out_qemu_st_direct(TCGContext *s, TCGReg lo, TCGReg hi,
+                                   TCGReg base, TCGMemOp opc)
+{
+    const TCGMemOp bswap = opc & MO_BSWAP;
+    RISCVInsn insn;
+
+    /* We don't yet handle byteswapping, assert */
+    g_assert(!bswap);
+    opc &= MO_SIZE;
+
+    if (TCG_TARGET_REG_BITS == 32 && opc == MO_64) {
+        tcg_out_opc_store(s, OPC_SW, base, lo, 0);
+        tcg_out_opc_store(s, OPC_SW, base, hi, 4);
+        return;
+    }
+
+    insn = st_op[opc];
+    tcg_debug_assert(insn != 0);
+    tcg_out_opc_store(s, insn, base, lo, 0);
+}
+
+
+#ifdef CONFIG_SOFTMMU
+#include "tcg-ldst-ool.inc.c"
 
 /* helper signature: helper_ret_ld_mmu(CPUState *env, target_ulong addr,
  *                                     TCGMemOpIdx oi, uintptr_t ra)
@@ -942,24 +1002,27 @@ static void * const qemu_st_helpers[16] = {
     [MO_BEQ]  = helper_be_stq_mmu,
 };
 
-static void tcg_out_tlb_load(TCGContext *s, TCGReg addrl,
-                             TCGReg addrh, TCGMemOpIdx oi,
-                             tcg_insn_unit **label_ptr, bool is_load)
+static tcg_insn_unit *tcg_out_qemu_ldst_ool(TCGContext *s, bool is_ld,
+                                            bool is_64, TCGMemOpIdx oi)
 {
     TCGMemOp opc = get_memop(oi);
     unsigned s_bits = opc & MO_SIZE;
     unsigned a_bits = get_alignment_bits(opc);
-    target_ulong mask;
+    tcg_target_ulong mask;
     int mem_index = get_mmuidx(oi);
     int cmp_off
-        = (is_load
+        = (is_ld
            ? offsetof(CPUArchState, tlb_table[mem_index][0].addr_read)
            : offsetof(CPUArchState, tlb_table[mem_index][0].addr_write));
     int add_off = offsetof(CPUArchState, tlb_table[mem_index][0].addend);
-    RISCVInsn load_cmp_op = (TARGET_LONG_BITS == 64 ? OPC_LD :
-                             TCG_TARGET_REG_BITS == 64 ? OPC_LWU : OPC_LW);
+    RISCVInsn load_cmp_op = TARGET_LONG_BITS == 64 ? OPC_LD : OPC_LW;
     RISCVInsn load_add_op = TCG_TARGET_REG_BITS == 64 ? OPC_LD : OPC_LW;
     TCGReg base = TCG_AREG0;
+    TCGReg addrl = TCG_REG_A1;
+    TCGReg datal = is_ld ? TCG_REG_A0 : TCG_REG_A2;
+    TCGReg arg;
+    tcg_insn_unit *thunk = s->code_ptr;
+    tcg_insn_unit *label;
 
     /* We don't support oversize guests */
     if (TCG_TARGET_REG_BITS < TARGET_LONG_BITS) {
@@ -970,8 +1033,7 @@ static void tcg_out_tlb_load(TCGContext *s, TCGReg addrl,
     if (a_bits < s_bits) {
         a_bits = s_bits;
     }
-    mask = (target_ulong)TARGET_PAGE_MASK | ((1 << a_bits) - 1);
-
+    mask = (tcg_target_ulong)TARGET_PAGE_MASK | ((1 << a_bits) - 1);
 
     /* Compensate for very large offsets.  */
     if (add_off >= 0x1000) {
@@ -1026,269 +1088,108 @@ static void tcg_out_tlb_load(TCGContext *s, TCGReg addrl,
     } else {
         tcg_out_movi(s, TCG_TYPE_REG, TCG_REG_TMP1, mask);
         tcg_out_opc_reg(s, OPC_AND, TCG_REG_TMP1, TCG_REG_TMP1, addrl);
-     }
+    }
 
     /* Compare masked address with the TLB entry. */
-    label_ptr[0] = s->code_ptr;
+    label = s->code_ptr;
     tcg_out_opc_branch(s, OPC_BNE, TCG_REG_TMP0, TCG_REG_TMP1, 0);
-    /* TODO: Move this out of line
-     * see:
-     *   https://lists.nongnu.org/archive/html/qemu-devel/2018-11/msg02234.html
-     */
 
-    /* TLB Hit - translate address using addend.  */
+    /*
+     * TLB Hit - translate address using addend.
+     */
     if (TCG_TARGET_REG_BITS > TARGET_LONG_BITS) {
         tcg_out_ext32u(s, TCG_REG_TMP0, addrl);
         addrl = TCG_REG_TMP0;
     }
     tcg_out_opc_reg(s, OPC_ADD, TCG_REG_TMP0, TCG_REG_TMP2, addrl);
-}
 
-static void add_qemu_ldst_label(TCGContext *s, int is_ld, TCGMemOpIdx oi,
-                                TCGType ext,
-                                TCGReg datalo, TCGReg datahi,
-                                TCGReg addrlo, TCGReg addrhi,
-                                void *raddr, tcg_insn_unit **label_ptr)
-{
-    TCGLabelQemuLdst *label = new_ldst_label(s);
-
-    label->is_ld = is_ld;
-    label->oi = oi;
-    label->type = ext;
-    label->datalo_reg = datalo;
-    label->datahi_reg = datahi;
-    label->addrlo_reg = addrlo;
-    label->addrhi_reg = addrhi;
-    label->raddr = raddr;
-    label->label_ptr[0] = label_ptr[0];
-}
-
-static void tcg_out_qemu_ld_slow_path(TCGContext *s, TCGLabelQemuLdst *l)
-{
-    TCGMemOpIdx oi = l->oi;
-    TCGMemOp opc = get_memop(oi);
-    TCGReg a0 = tcg_target_call_iarg_regs[0];
-    TCGReg a1 = tcg_target_call_iarg_regs[1];
-    TCGReg a2 = tcg_target_call_iarg_regs[2];
-    TCGReg a3 = tcg_target_call_iarg_regs[3];
-
-    /* We don't support oversize guests */
-    if (TCG_TARGET_REG_BITS < TARGET_LONG_BITS) {
-        g_assert_not_reached();
+    if (is_ld) {
+        tcg_out_qemu_ld_direct(s, datal, 0, TCG_REG_TMP0, opc, is_64);
+    } else {
+        tcg_out_qemu_st_direct(s, datal, 0, TCG_REG_TMP0, opc);
     }
 
-    /* resolve label address */
-    reloc_sbimm12(l->label_ptr[0], s->code_ptr);
+    tcg_out_opc_imm(s, OPC_JALR, TCG_REG_ZERO, TCG_REG_RA, 0);
 
-    /* call load helper */
-    tcg_out_mov(s, TCG_TYPE_PTR, a0, TCG_AREG0);
-    tcg_out_mov(s, TCG_TYPE_PTR, a1, l->addrlo_reg);
-    tcg_out_movi(s, TCG_TYPE_PTR, a2, oi);
-    tcg_out_movi(s, TCG_TYPE_PTR, a3, (tcg_target_long)l->raddr);
+    /*
+     * TLB Miss.
+     */
 
-    tcg_out_call(s, qemu_ld_helpers[opc & (MO_BSWAP | MO_SSIZE)]);
-    tcg_out_mov(s, (opc & MO_SIZE) == MO_64, l->datalo_reg, a0);
+    reloc_sbimm12(label, s->code_ptr);
 
-    tcg_out_goto(s, l->raddr);
-}
+    tcg_out_mov(s, TCG_TYPE_PTR, TCG_REG_A0, TCG_AREG0);
+    /* addrl and datal are already in place.  */
+    arg = is_ld ? TCG_REG_A2 : TCG_REG_A3;
+    tcg_out_movi(s, TCG_TYPE_I32, arg++, oi);
+    tcg_out_mov(s, TCG_TYPE_PTR, arg++, TCG_REG_RA);
 
-static void tcg_out_qemu_st_slow_path(TCGContext *s, TCGLabelQemuLdst *l)
-{
-    TCGMemOpIdx oi = l->oi;
-    TCGMemOp opc = get_memop(oi);
-    TCGMemOp s_bits = opc & MO_SIZE;
-    TCGReg a0 = tcg_target_call_iarg_regs[0];
-    TCGReg a1 = tcg_target_call_iarg_regs[1];
-    TCGReg a2 = tcg_target_call_iarg_regs[2];
-    TCGReg a3 = tcg_target_call_iarg_regs[3];
-    TCGReg a4 = tcg_target_call_iarg_regs[4];
-
-    /* We don't support oversize guests */
-    if (TCG_TARGET_REG_BITS < TARGET_LONG_BITS) {
-        g_assert_not_reached();
+    if (is_ld) {
+        tcg_out_call_int(s, qemu_ld_helpers[opc & (MO_BSWAP | MO_SSIZE)], true);
+    } else {
+        tcg_out_call_int(s, qemu_st_helpers[opc & (MO_BSWAP | MO_SIZE)], true);
     }
 
-    /* resolve label address */
-    reloc_sbimm12(l->label_ptr[0], s->code_ptr);
-
-    /* call store helper */
-    tcg_out_mov(s, TCG_TYPE_PTR, a0, TCG_AREG0);
-    tcg_out_mov(s, TCG_TYPE_PTR, a1, l->addrlo_reg);
-    tcg_out_mov(s, TCG_TYPE_PTR, a2, l->datalo_reg);
-    switch (s_bits) {
-    case MO_8:
-        tcg_out_ext8u(s, a2, a2);
-        break;
-    case MO_16:
-        tcg_out_ext16u(s, a2, a2);
-        break;
-    default:
-        break;
-    }
-    tcg_out_movi(s, TCG_TYPE_PTR, a3, oi);
-    tcg_out_movi(s, TCG_TYPE_PTR, a4, (tcg_target_long)l->raddr);
-
-    tcg_out_call(s, qemu_st_helpers[opc & (MO_BSWAP | MO_SSIZE)]);
-
-    tcg_out_goto(s, l->raddr);
+    return thunk;
 }
 #endif /* CONFIG_SOFTMMU */
 
-static void tcg_out_qemu_ld_direct(TCGContext *s, TCGReg lo, TCGReg hi,
-                                   TCGReg base, TCGMemOp opc, bool is_64)
-{
-    const TCGMemOp bswap = opc & MO_BSWAP;
-
-    /* We don't yet handle byteswapping, assert */
-    g_assert(!bswap);
-
-    switch (opc & (MO_SSIZE)) {
-    case MO_UB:
-        tcg_out_opc_imm(s, OPC_LBU, lo, base, 0);
-        break;
-    case MO_SB:
-        tcg_out_opc_imm(s, OPC_LB, lo, base, 0);
-        break;
-    case MO_UW:
-        tcg_out_opc_imm(s, OPC_LHU, lo, base, 0);
-        break;
-    case MO_SW:
-        tcg_out_opc_imm(s, OPC_LH, lo, base, 0);
-        break;
-    case MO_UL:
-        if (TCG_TARGET_REG_BITS == 64 && is_64) {
-            tcg_out_opc_imm(s, OPC_LWU, lo, base, 0);
-            break;
-        }
-        /* FALLTHRU */
-    case MO_SL:
-        tcg_out_opc_imm(s, OPC_LW, lo, base, 0);
-        break;
-    case MO_Q:
-        /* Prefer to load from offset 0 first, but allow for overlap.  */
-        if (TCG_TARGET_REG_BITS == 64) {
-            tcg_out_opc_imm(s, OPC_LD, lo, base, 0);
-        } else if (lo != base) {
-            tcg_out_opc_imm(s, OPC_LW, lo, base, 0);
-            tcg_out_opc_imm(s, OPC_LW, hi, base, 4);
-        } else {
-            tcg_out_opc_imm(s, OPC_LW, hi, base, 4);
-            tcg_out_opc_imm(s, OPC_LW, lo, base, 0);
-        }
-        break;
-    default:
-        g_assert_not_reached();
-    }
-}
-
 static void tcg_out_qemu_ld(TCGContext *s, const TCGArg *args, bool is_64)
 {
-    TCGReg addr_regl, addr_regh __attribute__((unused));
-    TCGReg data_regl, data_regh;
+    TCGReg addrl __attribute__((unused));
+    TCGReg addrh __attribute__((unused));
+    TCGReg datal __attribute__((unused));
+    TCGReg datah __attribute__((unused));
     TCGMemOpIdx oi;
-    TCGMemOp opc;
-#if defined(CONFIG_SOFTMMU)
-    tcg_insn_unit *label_ptr[1];
-#endif
-    TCGReg base = TCG_REG_TMP0;
 
-    data_regl = *args++;
-    data_regh = (TCG_TARGET_REG_BITS == 32 && is_64 ? *args++ : 0);
-    addr_regl = *args++;
-    addr_regh = (TCG_TARGET_REG_BITS < TARGET_LONG_BITS ? *args++ : 0);
-    oi = *args++;
-    opc = get_memop(oi);
+    datal = *args++;
+    datah = (TCG_TARGET_REG_BITS == 32 && is_64 ? *args++ : 0);
+    addrl = *args++;
+    addrh = (TCG_TARGET_REG_BITS < TARGET_LONG_BITS ? *args++ : 0);
+    oi = *args;
 
-#if defined(CONFIG_SOFTMMU)
-    tcg_out_tlb_load(s, addr_regl, addr_regh, oi, label_ptr, 1);
-    tcg_out_qemu_ld_direct(s, data_regl, data_regh, base, opc, is_64);
-    add_qemu_ldst_label(s, 1, oi,
-                        (is_64 ? TCG_TYPE_I64 : TCG_TYPE_I32),
-                        data_regl, data_regh, addr_regl, addr_regh,
-                        s->code_ptr, label_ptr);
+#ifdef CONFIG_SOFTMMU
+    add_ldst_ool_label(s, true, is_64, oi, R_RISCV_JAL, 0);
+    tcg_out_opc_jump(s, OPC_JAL, TCG_REG_RA, 0);
 #else
     if (TCG_TARGET_REG_BITS > TARGET_LONG_BITS) {
-        tcg_out_ext32u(s, base, addr_regl);
-        addr_regl = base;
+        tcg_out_ext32u(s, TCG_REG_TMP0, addrl);
+        addrl = TCG_REG_TMP0;
     }
-
-    if (guest_base == 0) {
-        tcg_out_opc_reg(s, OPC_ADD, base, addr_regl, TCG_REG_ZERO);
-    } else {
-        tcg_out_opc_reg(s, OPC_ADD, base, TCG_GUEST_BASE_REG, addr_regl);
+    if (guest_base != 0) {
+        tcg_out_opc_reg(s, OPC_ADD, TCG_REG_TMP0, addrl, TCG_GUEST_BASE_REG);
+        addrl = TCG_REG_TMP0;
     }
-    tcg_out_qemu_ld_direct(s, data_regl, data_regh, base, opc, is_64);
+    tcg_out_qemu_ld_direct(s, datal, datah, addrl, get_memop(oi), is_64);
 #endif
-}
-
-static void tcg_out_qemu_st_direct(TCGContext *s, TCGReg lo, TCGReg hi,
-                                   TCGReg base, TCGMemOp opc)
-{
-    const TCGMemOp bswap = opc & MO_BSWAP;
-
-    /* We don't yet handle byteswapping, assert */
-    g_assert(!bswap);
-
-    switch (opc & (MO_SSIZE)) {
-    case MO_8:
-        tcg_out_opc_store(s, OPC_SB, base, lo, 0);
-        break;
-    case MO_16:
-        tcg_out_opc_store(s, OPC_SH, base, lo, 0);
-        break;
-    case MO_32:
-        tcg_out_opc_store(s, OPC_SW, base, lo, 0);
-        break;
-    case MO_64:
-        if (TCG_TARGET_REG_BITS == 64) {
-            tcg_out_opc_store(s, OPC_SD, base, lo, 0);
-        } else {
-            tcg_out_opc_store(s, OPC_SW, base, lo, 0);
-            tcg_out_opc_store(s, OPC_SW, base, hi, 4);
-        }
-        break;
-    default:
-        g_assert_not_reached();
-    }
 }
 
 static void tcg_out_qemu_st(TCGContext *s, const TCGArg *args, bool is_64)
 {
-    TCGReg addr_regl, addr_regh __attribute__((unused));
-    TCGReg data_regl, data_regh;
+    TCGReg addrl __attribute__((unused));
+    TCGReg addrh __attribute__((unused));
+    TCGReg datal __attribute__((unused));
+    TCGReg datah __attribute__((unused));
     TCGMemOpIdx oi;
-    TCGMemOp opc;
-#if defined(CONFIG_SOFTMMU)
-    tcg_insn_unit *label_ptr[1];
-#endif
-    TCGReg base = TCG_REG_TMP0;
 
-    data_regl = *args++;
-    data_regh = (TCG_TARGET_REG_BITS == 32 && is_64 ? *args++ : 0);
-    addr_regl = *args++;
-    addr_regh = (TCG_TARGET_REG_BITS < TARGET_LONG_BITS ? *args++ : 0);
-    oi = *args++;
-    opc = get_memop(oi);
+    datal = *args++;
+    datah = (TCG_TARGET_REG_BITS == 32 && is_64 ? *args++ : 0);
+    addrl = *args++;
+    addrh = (TCG_TARGET_REG_BITS < TARGET_LONG_BITS ? *args++ : 0);
+    oi = *args;
 
-#if defined(CONFIG_SOFTMMU)
-    tcg_out_tlb_load(s, addr_regl, addr_regh, oi, label_ptr, 0);
-    tcg_out_qemu_st_direct(s, data_regl, data_regh, base, opc);
-    add_qemu_ldst_label(s, 0, oi,
-                        (is_64 ? TCG_TYPE_I64 : TCG_TYPE_I32),
-                        data_regl, data_regh, addr_regl, addr_regh,
-                        s->code_ptr, label_ptr);
+#ifdef CONFIG_SOFTMMU
+    add_ldst_ool_label(s, false, is_64, oi, R_RISCV_JAL, 0);
+    tcg_out_opc_jump(s, OPC_JAL, TCG_REG_RA, 0);
 #else
     if (TCG_TARGET_REG_BITS > TARGET_LONG_BITS) {
-        tcg_out_ext32u(s, base, addr_regl);
-        addr_regl = base;
+        tcg_out_ext32u(s, TCG_REG_TMP0, addrl);
+        addrl = TCG_REG_TMP0;
     }
-
-    if (guest_base == 0) {
-        tcg_out_opc_reg(s, OPC_ADD, base, addr_regl, TCG_REG_ZERO);
-    } else {
-        tcg_out_opc_reg(s, OPC_ADD, base, TCG_GUEST_BASE_REG, addr_regl);
+    if (guest_base != 0) {
+        tcg_out_opc_reg(s, OPC_ADD, TCG_REG_TMP0, addrl, TCG_GUEST_BASE_REG);
+        addrl = TCG_REG_TMP0;
     }
-    tcg_out_qemu_st_direct(s, data_regl, data_regh, base, opc);
+    tcg_out_qemu_st_direct(s, datal, datah, addrl, opc);
 #endif
 }
 
@@ -1627,14 +1528,14 @@ static void tcg_out_op(TCGContext *s, TCGOpcode opc,
 
 static const TCGTargetOpDef *tcg_target_op_def(TCGOpcode op)
 {
-    static const TCGTargetOpDef r
-        = { .args_ct_str = { "r" } };
-    static const TCGTargetOpDef r_r
-        = { .args_ct_str = { "r", "r" } };
-    static const TCGTargetOpDef rZ_r
-        = { .args_ct_str = { "rZ", "r" } };
-    static const TCGTargetOpDef rZ_rZ
-        = { .args_ct_str = { "rZ", "rZ" } };
+    static const TCGTargetOpDef r = { .args_ct_str = { "r" } };
+    static const TCGTargetOpDef r_r = { .args_ct_str = { "r", "r" } };
+    static const TCGTargetOpDef rZ_r = { .args_ct_str = { "rZ", "r" } };
+    static const TCGTargetOpDef rZ_rZ = { .args_ct_str = { "rZ", "rZ" } };
+#ifdef CONFIG_SOFTMMU
+    static const TCGTargetOpDef A_B = { .args_ct_str = { "A", "B" } };
+    static const TCGTargetOpDef C_B = { .args_ct_str = { "C", "B" } };
+#endif
     static const TCGTargetOpDef rZ_rZ_rZ_rZ
         = { .args_ct_str = { "rZ", "rZ", "rZ", "rZ" } };
     static const TCGTargetOpDef r_r_ri
@@ -1647,22 +1548,6 @@ static const TCGTargetOpDef *tcg_target_op_def(TCGOpcode op)
         = { .args_ct_str = { "r", "rZ", "rZ" } };
     static const TCGTargetOpDef r_rZ_rZ_rZ_rZ
         = { .args_ct_str = { "r", "rZ", "rZ", "rZ", "rZ" } };
-    static const TCGTargetOpDef r_L
-        = { .args_ct_str = { "r", "L" } };
-    static const TCGTargetOpDef r_r_L
-        = { .args_ct_str = { "r", "r", "L" } };
-    static const TCGTargetOpDef r_L_L
-        = { .args_ct_str = { "r", "L", "L" } };
-    static const TCGTargetOpDef r_r_L_L
-        = { .args_ct_str = { "r", "r", "L", "L" } };
-    static const TCGTargetOpDef LZ_L
-        = { .args_ct_str = { "LZ", "L" } };
-    static const TCGTargetOpDef LZ_L_L
-        = { .args_ct_str = { "LZ", "L", "L" } };
-    static const TCGTargetOpDef LZ_LZ_L
-        = { .args_ct_str = { "LZ", "LZ", "L" } };
-    static const TCGTargetOpDef LZ_LZ_L_L
-        = { .args_ct_str = { "LZ", "LZ", "L", "L" } };
     static const TCGTargetOpDef r_r_rZ_rZ_rM_rM
         = { .args_ct_str = { "r", "r", "rZ", "rZ", "rM", "rM" } };
 
@@ -1768,17 +1653,19 @@ static const TCGTargetOpDef *tcg_target_op_def(TCGOpcode op)
         return &r_rZ_rZ_rZ_rZ;
 
     case INDEX_op_qemu_ld_i32:
-        return TARGET_LONG_BITS <= TCG_TARGET_REG_BITS ? &r_L : &r_L_L;
-    case INDEX_op_qemu_st_i32:
-        return TARGET_LONG_BITS <= TCG_TARGET_REG_BITS ? &LZ_L : &LZ_L_L;
     case INDEX_op_qemu_ld_i64:
-        return TCG_TARGET_REG_BITS == 64 ? &r_L
-               : TARGET_LONG_BITS <= TCG_TARGET_REG_BITS ? &r_r_L
-               : &r_r_L_L;
+#ifdef CONFIG_SOFTMMU
+        return &A_B;
+#else
+        return &r_r;
+#endif
+    case INDEX_op_qemu_st_i32:
     case INDEX_op_qemu_st_i64:
-        return TCG_TARGET_REG_BITS == 64 ? &LZ_L
-               : TARGET_LONG_BITS <= TCG_TARGET_REG_BITS ? &LZ_LZ_L
-               : &LZ_LZ_L_L;
+#ifdef CONFIG_SOFTMMU
+        return &C_B;
+#else
+        return &r_r;
+#endif
 
     default:
         return NULL;
