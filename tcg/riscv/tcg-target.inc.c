@@ -455,7 +455,7 @@ static void reloc_call(tcg_insn_unit *code_ptr, tcg_insn_unit *target)
     code_ptr[1] |= encode_imm12(lo);
 }
 
-static void patch_reloc(tcg_insn_unit *code_ptr, int type,
+static bool patch_reloc(tcg_insn_unit *code_ptr, int type,
                         intptr_t value, intptr_t addend)
 {
     uint32_t insn = *code_ptr;
@@ -496,6 +496,7 @@ static void patch_reloc(tcg_insn_unit *code_ptr, int type,
     default:
         tcg_abort();
     }
+    return true;
 }
 
 /*
