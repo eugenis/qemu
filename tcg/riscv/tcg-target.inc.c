@@ -358,21 +358,21 @@ static int32_t encode_u(RISCVInsn opc, TCGReg rd, uint32_t imm)
 
 /* Type-UJ */
 
-static int32_t encode_ujimm12(uint32_t imm)
+static int32_t encode_ujimm20(uint32_t imm)
 {
     int32_t ret = 0;
 
-    ret |= (imm & 0x100000) << 11;
-    ret |= (imm & 0xffe) << 20;
-    ret |= (imm & 0x800) << 9;
-    ret |= imm & 0xff000;
+    ret |= (imm & 0x0007fe) << (21 - 1);
+    ret |= (imm & 0x000800) << (20 - 11);
+    ret |= (imm & 0x0ff000) << (12 - 12);
+    ret |= (imm & 0x100000) << (31 - 20);
 
     return ret;
 }
 
 static int32_t encode_uj(RISCVInsn opc, TCGReg rd, uint32_t imm)
 {
-    return opc | (rd & 0x1f) << 7 | encode_ujimm12(imm);
+    return opc | (rd & 0x1f) << 7 | encode_ujimm20(imm);
 }
 
 /*
@@ -440,7 +440,7 @@ static void reloc_jimm20(tcg_insn_unit *code_ptr, tcg_insn_unit *target)
     intptr_t offset = (intptr_t)target - (intptr_t)code_ptr;
     tcg_debug_assert(offset == sextreg(offset, 1, 20) << 1);
 
-    code_ptr[0] |= encode_ujimm12(offset);
+    code_ptr[0] |= encode_ujimm20(offset);
 }
 
 static void reloc_call(tcg_insn_unit *code_ptr, tcg_insn_unit *target)
