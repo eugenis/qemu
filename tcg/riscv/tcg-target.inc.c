@@ -846,7 +846,7 @@ static void tcg_out_setcond2(TCGContext *s, TCGCond cond, TCGReg ret,
 static inline void tcg_out_goto(TCGContext *s, tcg_insn_unit *target)
 {
     ptrdiff_t offset = tcg_pcrel_diff(s, target);
-    tcg_debug_assert(offset == sextreg(offset, 0, 26));
+    tcg_debug_assert(offset == sextreg(offset, 1, 20) << 1);
     tcg_out_opc_jump(s, OPC_JAL, TCG_REG_ZERO, offset);
 }
 
