@@ -757,21 +757,27 @@ static void tcg_out_brcond(TCGContext *s, TCGCond cond, TCGReg arg1,
                            TCGReg arg2, TCGLabel *l)
 {
     RISCVInsn op = tcg_brcond_to_riscv[cond].op;
-    intptr_t diff;
-    bool swap = tcg_brcond_to_riscv[cond].swap;
-    bool short_jmp;
 
     tcg_debug_assert(op != 0);
 
-    tcg_out_opc_branch(s, op, swap ? arg2 : arg1, swap ? arg1 : arg2, 0);
+    if (tcg_brcond_to_riscv[cond].swap) {
+        TCGReg t = arg1;
+        arg1 = arg2;
+        arg2 = t;
+    }
 
-    diff = tcg_pcrel_diff(s, l->u.value_ptr);
-    short_jmp = diff == sextreg(diff, 0, 12);
-
-    if (l->has_value && short_jmp) {
-        reloc_sbimm12(s->code_ptr - 1, l->u.value_ptr);
+    if (l->has_value) {
+        intptr_t diff = tcg_pcrel_diff(s, l->u.value_ptr);
+        if (diff == sextreg(diff, 0, 12)) {
+            tcg_out_opc_branch(s, op, arg1, arg2, diff);
+        } else {
+            /* Invert the conditional branch.  */
+            tcg_out_opc_branch(s, op ^ (1 << 12), arg1, arg2, 8);
+            tcg_out_opc_jump(s, OPC_JAL, TCG_REG_ZERO, diff - 4);
+        }
     } else {
-        tcg_out_reloc(s, s->code_ptr - 1, R_RISCV_BRANCH, l, 0);
+        tcg_out_reloc(s, s->code_ptr, R_RISCV_BRANCH, l, 0);
+        tcg_out_opc_branch(s, op, arg1, arg2, 0);
         /* NOP to allow patching later */
         tcg_out_opc_imm(s, OPC_ADDI, TCG_REG_ZERO, TCG_REG_ZERO, 0);
     }
