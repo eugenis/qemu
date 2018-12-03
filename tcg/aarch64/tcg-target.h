@@ -137,6 +137,7 @@ typedef enum {
 #define TCG_TARGET_HAS_mul_vec          1
 
 #define TCG_TARGET_DEFAULT_MO (0)
+#define TCG_TARGET_HAS_MEMORY_BSWAP     1
 
 static inline void flush_icache_range(uintptr_t start, uintptr_t stop)
 {
@@ -146,7 +147,7 @@ static inline void flush_icache_range(uintptr_t start, uintptr_t stop)
 void tb_target_set_jmp_target(uintptr_t, uintptr_t, uintptr_t);
 
 #ifdef CONFIG_SOFTMMU
-#define TCG_TARGET_NEED_LDST_LABELS
+#define TCG_TARGET_NEED_LDST_OOL_LABELS
 #endif
 #define TCG_TARGET_NEED_POOL_LABELS
 
