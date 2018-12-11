@@ -1439,7 +1439,7 @@ static void tcg_out_op(TCGContext *s, TCGOpcode opc,
         tcg_out_opc_reg(s, OPC_SUBW, a0, TCG_REG_ZERO, a1);
         break;
     case INDEX_op_neg_i64:
-        tcg_out_opc_imm(s, OPC_SUB, a0, TCG_REG_ZERO, a1);
+        tcg_out_opc_reg(s, OPC_SUB, a0, TCG_REG_ZERO, a1);
         break;
 
     case INDEX_op_mul_i32:
@@ -1602,12 +1602,12 @@ static void tcg_out_op(TCGContext *s, TCGOpcode opc,
 
     case INDEX_op_mulsh_i32:
     case INDEX_op_mulsh_i64:
-        tcg_out_opc_imm(s, OPC_MULH, a0, a1, a2);
+        tcg_out_opc_reg(s, OPC_MULH, a0, a1, a2);
         break;
 
     case INDEX_op_muluh_i32:
     case INDEX_op_muluh_i64:
-        tcg_out_opc_imm(s, OPC_MULHU, a0, a1, a2);
+        tcg_out_opc_reg(s, OPC_MULHU, a0, a1, a2);
         break;
 
     case INDEX_op_mb:
