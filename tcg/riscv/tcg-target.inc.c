@@ -1030,10 +1030,8 @@ static void tcg_out_tlb_load(TCGContext *s, TCGReg addrl,
     /* Compare masked address with the TLB entry. */
     label_ptr[0] = s->code_ptr;
     tcg_out_opc_branch(s, OPC_BNE, TCG_REG_TMP0, TCG_REG_TMP1, 0);
-    /* TODO: Move this out of line
-     * see:
-     *   https://lists.nongnu.org/archive/html/qemu-devel/2018-11/msg02234.html
-     */
+    /* NOP to allow patching later */
+    tcg_out_opc_imm(s, OPC_ADDI, TCG_REG_ZERO, TCG_REG_ZERO, 0);
 
     /* TLB Hit - translate address using addend.  */
     if (TCG_TARGET_REG_BITS > TARGET_LONG_BITS) {
@@ -1077,7 +1075,7 @@ static void tcg_out_qemu_ld_slow_path(TCGContext *s, TCGLabelQemuLdst *l)
     }
 
     /* resolve label address */
-    reloc_sbimm12(l->label_ptr[0], s->code_ptr);
+    patch_reloc(l->label_ptr[0], R_RISCV_BRANCH, (intptr_t)s->code_ptr, 0);
 
     /* call load helper */
     tcg_out_mov(s, TCG_TYPE_PTR, a0, TCG_AREG0);
@@ -1108,7 +1106,7 @@ static void tcg_out_qemu_st_slow_path(TCGContext *s, TCGLabelQemuLdst *l)
     }
 
     /* resolve label address */
-    reloc_sbimm12(l->label_ptr[0], s->code_ptr);
+    patch_reloc(l->label_ptr[0], R_RISCV_BRANCH, (intptr_t)s->code_ptr, 0);
 
     /* call store helper */
     tcg_out_mov(s, TCG_TYPE_PTR, a0, TCG_AREG0);
