@@ -281,6 +281,20 @@ static void cpu_max_set_sve_vq(Object *obj, Visitor *v, const char *name,
     error_propagate(errp, err);
 }
 
+#ifdef CONFIG_USER_ONLY
+static bool aarch64_cpu_get_guarded_pages(Object *obj, Error **errp)
+{
+    ARMCPU *cpu = ARM_CPU(obj);
+    return cpu->guarded_pages;
+}
+
+static void aarch64_cpu_set_guarded_pages(Object *obj, bool val, Error **errp)
+{
+    ARMCPU *cpu = ARM_CPU(obj);
+    cpu->guarded_pages = val;
+}
+#endif
+
 /* -cpu max: if KVM is enabled, like -cpu host (best possible with this host);
  * otherwise, a CPU with as many features enabled as our emulation supports.
  * The version of '-cpu max' for qemu-system-arm is defined in cpu.c;
@@ -360,6 +374,12 @@ static void aarch64_max_initfn(Object *obj)
          */
         cpu->ctr = 0x80038003; /* 32 byte I and D cacheline size, VIPT icache */
         cpu->dcz_blocksize = 7; /*  512 bytes */
+
+        object_property_add_bool(obj, "x-guarded-pages",
+                                 aarch64_cpu_get_guarded_pages,
+                                 aarch64_cpu_set_guarded_pages, NULL);
+        object_property_set_description(obj, "x-guarded-pages",
+            "Set on/off GuardPage bit for all pages", NULL);
 #endif
 
         cpu->sve_max_vq = ARM_MAX_VQ;
