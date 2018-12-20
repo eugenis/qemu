@@ -18,4 +18,10 @@ run-fcvt: fcvt
 AARCH64_TESTS += pauth-1 pauth-2
 run-pauth-%: QEMU += -cpu max
 
+# We need binutils-2.32 to link this test case without warnings.
+# And if we know that we have 2.32, we also don't need the linker script.
+# In the meantime, disable the test by default.
+# AARCH64_TESTS += bti-1
+bti-1: LDFLAGS += -nostdlib -Wl,-T,$(AARCH64_SRC)/bti.ld
+
 TESTS:=$(AARCH64_TESTS)
