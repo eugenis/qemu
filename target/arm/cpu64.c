@@ -293,6 +293,18 @@ static void aarch64_cpu_set_guarded_pages(Object *obj, bool val, Error **errp)
     ARMCPU *cpu = ARM_CPU(obj);
     cpu->guarded_pages = val;
 }
+
+static bool aarch64_cpu_get_tagged_pages(Object *obj, Error **errp)
+{
+    ARMCPU *cpu = ARM_CPU(obj);
+    return cpu->tagged_pages;
+}
+
+static void aarch64_cpu_set_tagged_pages(Object *obj, bool val, Error **errp)
+{
+    ARMCPU *cpu = ARM_CPU(obj);
+    cpu->tagged_pages = val;
+}
 #endif
 
 /* -cpu max: if KVM is enabled, like -cpu host (best possible with this host);
@@ -380,6 +392,12 @@ static void aarch64_max_initfn(Object *obj)
                                  aarch64_cpu_set_guarded_pages, NULL);
         object_property_set_description(obj, "x-guarded-pages",
             "Set on/off GuardPage bit for all pages", NULL);
+
+        object_property_add_bool(obj, "x-tagged-pages",
+                                 aarch64_cpu_get_tagged_pages,
+                                 aarch64_cpu_set_tagged_pages, NULL);
+        object_property_set_description(obj, "x-tagged-pages",
+            "Set on/off MemAttr Tagged for all pages", NULL);
 #endif
 
         cpu->sve_max_vq = ARM_MAX_VQ;

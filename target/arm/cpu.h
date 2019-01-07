@@ -912,6 +912,7 @@ struct ARMCPU {
 
 #ifdef CONFIG_USER_ONLY
     bool guarded_pages;
+    bool tagged_pages;
 #endif
 
     QLIST_HEAD(, ARMELChangeHook) pre_el_change_hooks;
