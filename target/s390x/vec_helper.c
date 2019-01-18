@@ -14,6 +14,7 @@
 #include "cpu.h"
 #include "internal.h"
 #include "vec.h"
+#include "internal.h"
 #include "tcg/tcg.h"
 #include "tcg/tcg-gvec-desc.h"
 #include "exec/helper-proto.h"
