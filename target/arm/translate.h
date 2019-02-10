@@ -209,6 +209,8 @@ static inline void set_pstate_bits(uint32_t bits)
 {
     TCGv_i32 p = tcg_temp_new_i32();
 
+    tcg_debug_assert(!(bits & CACHED_PSTATE_BITS));
+
     tcg_gen_ld_i32(p, cpu_env, offsetof(CPUARMState, pstate));
     tcg_gen_ori_i32(p, p, bits);
     tcg_gen_st_i32(p, cpu_env, offsetof(CPUARMState, pstate));
@@ -219,6 +221,8 @@ static inline void set_pstate_bits(uint32_t bits)
 static inline void clear_pstate_bits(uint32_t bits)
 {
     TCGv_i32 p = tcg_temp_new_i32();
+
+    tcg_debug_assert(!(bits & CACHED_PSTATE_BITS));
 
     tcg_gen_ld_i32(p, cpu_env, offsetof(CPUARMState, pstate));
     tcg_gen_andi_i32(p, p, ~bits);
