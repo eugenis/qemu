@@ -23,6 +23,7 @@
 #include "hw/semihosting/semihost.h"
 #include "sysemu/cpus.h"
 #include "sysemu/kvm.h"
+#include "sysemu/tcg.h"
 #include "qemu/range.h"
 #include "qapi/qapi-commands-machine-target.h"
 #include "qapi/error.h"
@@ -5591,32 +5592,45 @@ static void define_debug_regs(ARMCPU *cpu)
     /* Define v7 and v8 architectural debug registers.
      * These are just dummy implementations for now.
      */
-    int i;
-    int wrps, brps, ctx_cmps;
-    ARMCPRegInfo dbgdidr = {
-        .name = "DBGDIDR", .cp = 14, .crn = 0, .crm = 0, .opc1 = 0, .opc2 = 0,
-        .access = PL0_R, .accessfn = access_tda,
-        .type = ARM_CP_CONST, .resetvalue = cpu->dbgdidr,
-    };
+    int i, wrps, brps, ctx_cmps;
 
-    /* Note that all these register fields hold "number of Xs minus 1". */
-    brps = extract32(cpu->dbgdidr, 24, 4);
-    wrps = extract32(cpu->dbgdidr, 28, 4);
-    ctx_cmps = extract32(cpu->dbgdidr, 20, 4);
-
-    assert(ctx_cmps <= brps);
-
-    /* The DBGDIDR and ID_AA64DFR0_EL1 define various properties
+    /*
+     * The DBGDIDR and ID_AA64DFR0_EL1 define various properties
      * of the debug registers such as number of breakpoints;
      * check that if they both exist then they agree.
+     *
+     * Note that all these register fields hold "number of Xs minus 1".
+     *
+     * The ARM ARM says DBGDIDR is optional and deprecated if EL1 cannot
+     * use AArch32.  Given that bit 15 is RES1, we implement the register
+     * only if the value is non-zero.
      */
     if (arm_feature(&cpu->env, ARM_FEATURE_AARCH64)) {
-        assert(extract32(cpu->id_aa64dfr0, 12, 4) == brps);
-        assert(extract32(cpu->id_aa64dfr0, 20, 4) == wrps);
-        assert(extract32(cpu->id_aa64dfr0, 28, 4) == ctx_cmps);
-    }
+        brps = extract32(cpu->id_aa64dfr0, 12, 4);
+        wrps = extract32(cpu->id_aa64dfr0, 20, 4);
+        ctx_cmps = extract32(cpu->id_aa64dfr0, 28, 4);
 
-    define_one_arm_cp_reg(cpu, &dbgdidr);
+        if (cpu->dbgdidr != 0) {
+            assert(extract32(cpu->dbgdidr, 24, 4) == brps);
+            assert(extract32(cpu->dbgdidr, 28, 4) == wrps);
+            assert(extract32(cpu->dbgdidr, 20, 4) == ctx_cmps);
+        }
+    } else {
+        assert(cpu->dbgdidr != 0);
+        brps = extract32(cpu->dbgdidr, 24, 4);
+        wrps = extract32(cpu->dbgdidr, 28, 4);
+        ctx_cmps = extract32(cpu->dbgdidr, 20, 4);
+    }
+    assert(ctx_cmps <= brps);
+
+    if (cpu->dbgdidr != 0) {
+        ARMCPRegInfo dbgdidr = {
+            .name = "DBGDIDR", .cp = 14, .crn = 0, .crm = 0,
+            .opc1 = 0, .opc2 = 0, .access = PL0_R, .accessfn = access_tda,
+            .type = ARM_CP_CONST, .resetvalue = cpu->dbgdidr,
+        };
+        define_one_arm_cp_reg(cpu, &dbgdidr);
+    }
     define_arm_cp_regs(cpu, debug_cp_reginfo);
 
     if (arm_feature(&cpu->env, ARM_FEATURE_LPAE)) {
