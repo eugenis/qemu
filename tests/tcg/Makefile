@@ -132,6 +132,9 @@ endif
 gdb-%: %
 	gdb --args $(QEMU) $(QEMU_OPTS) $<
 
+gdb-%: %
+	gdb --args $(QEMU) $(QEMU_OPTS) $<
+
 .PHONY: run
 run: $(RUN_TESTS)
 
