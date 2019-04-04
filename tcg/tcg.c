@@ -64,7 +64,9 @@
 /* Forward declarations for functions declared in tcg-target.inc.c and
    used here. */
 static void tcg_target_init(TCGContext *s);
+#ifndef TCG_TARGET_LOOKUP_CONSTRAINT
 static const TCGTargetOpDef *tcg_target_op_def(TCGOpcode);
+#endif
 static void tcg_target_qemu_prologue(TCGContext *s);
 static bool patch_reloc(tcg_insn_unit *code_ptr, int type,
                         intptr_t value, intptr_t addend);
@@ -98,8 +100,11 @@ static void tcg_register_jit_int(void *buf, size_t size,
     __attribute__((unused));
 
 /* Forward declarations for functions declared and used in tcg-target.inc.c. */
+#ifndef TCG_TARGET_LOOKUP_CONSTRAINT
 static const char *target_parse_constraint(TCGArgConstraint *ct,
                                            const char *ct_str, TCGType type);
+#endif
+static const TCGArgConstraint *target_lookup_constraint(const TCGOp *op);
 static void tcg_out_ld(TCGContext *s, TCGType type, TCGReg ret, TCGReg arg1,
                        intptr_t arg2);
 static void tcg_out_mov(TCGContext *s, TCGType type, TCGReg ret, TCGReg arg);
@@ -887,37 +892,49 @@ static const TCGHelperInfo all_helpers[] = {
 static GHashTable *helper_table;
 
 static int indirect_reg_alloc_order[ARRAY_SIZE(tcg_target_reg_alloc_order)];
+#ifndef TCG_TARGET_LOOKUP_CONSTRAINT
 static void process_op_defs(TCGContext *s);
+#elif defined(CONFIG_DEBUG_TCG)
+static void validate_constraints(TCGContext *s);
+#endif
 static TCGTemp *tcg_global_reg_new_internal(TCGContext *s, TCGType type,
                                             TCGReg reg, const char *name);
 
 void tcg_context_init(TCGContext *s)
 {
-    int op, total_args, n, i;
-    TCGOpDef *def;
-    TCGArgConstraint *args_ct;
+    int n, i;
     TCGTemp *ts;
 
     memset(s, 0, sizeof(*s));
     s->nb_globals = 0;
 
-    /* Count total number of arguments and allocate the corresponding
-       space */
-    total_args = 0;
-    for(op = 0; op < NB_OPS; op++) {
-        def = &tcg_op_defs[op];
-        n = def->nb_iargs + def->nb_oargs;
-        total_args += n;
-    }
+    tcg_target_init(s);
 
-    args_ct = g_malloc(sizeof(TCGArgConstraint) * total_args);
+#ifndef TCG_TARGET_LOOKUP_CONSTRAINT
+    {
+        /* Count total number of arguments and allocate space.  */
+        int total_args, op;
+        TCGArgConstraint *args_ct;
+        TCGOpDef *def;
 
-    for(op = 0; op < NB_OPS; op++) {
-        def = &tcg_op_defs[op];
-        def->args_ct = args_ct;
-        n = def->nb_iargs + def->nb_oargs;
-        args_ct += n;
+        for (op = total_args = 0; op < NB_OPS; op++) {
+            def = &tcg_op_defs[op];
+            total_args += def->nb_iargs + def->nb_oargs;
+        }
+
+        args_ct = g_new(TCGArgConstraint, total_args);
+
+        for (op = 0; op < NB_OPS; op++) {
+            def = &tcg_op_defs[op];
+            def->args_ct = args_ct;
+            args_ct += def->nb_iargs + def->nb_oargs;
+        }
+
+        process_op_defs(s);
     }
+#elif defined(CONFIG_DEBUG_TCG)
+    validate_constraints(s);
+#endif
 
     /* Register helpers.  */
     /* Use g_direct_hash/equal for direct pointer comparisons on func.  */
@@ -927,9 +944,6 @@ void tcg_context_init(TCGContext *s)
         g_hash_table_insert(helper_table, (gpointer)all_helpers[i].func,
                             (gpointer)&all_helpers[i]);
     }
-
-    tcg_target_init(s);
-    process_op_defs(s);
 
     /* Reverse the order of the saved registers, assuming they're all at
        the start of tcg_target_reg_alloc_order.  */
@@ -2107,6 +2121,7 @@ static void tcg_dump_ops(TCGContext *s, bool have_prefs)
     }
 }
 
+#ifndef TCG_TARGET_LOOKUP_CONSTRAINT
 /* we give more priority to constraints with less registers */
 static int get_constraint_priority(const TCGOpDef *def, int k)
 {
@@ -2220,6 +2235,89 @@ static void process_op_defs(TCGContext *s)
         sort_constraints(def, def->nb_oargs, def->nb_iargs);
     }
 }
+
+static const TCGArgConstraint *target_lookup_constraint(const TCGOp *op)
+{
+    TCGOpDef *def = &tcg_op_defs[op->opc];
+    return def->args_ct;
+}
+#elif defined(CONFIG_DEBUG_TCG)
+static void validate_constraints(TCGContext *s)
+{
+    TCGOp op = { };
+    TCGOpcode opc;
+
+    for (opc = 0; opc < NB_OPS; opc++) {
+        const TCGOpDef *def = &tcg_op_defs[opc];
+        const TCGArgConstraint *ct;
+        int i, nb_iargs, nb_oargs, nb_args, sorted;
+
+        if (def->flags & TCG_OPF_NOT_PRESENT) {
+            continue;
+        }
+
+        nb_oargs = def->nb_oargs;
+        nb_iargs = def->nb_iargs;
+        nb_args = nb_oargs + nb_iargs;
+        if (nb_args == 0) {
+            continue;
+        }
+
+        /* ??? So far no tcg target uses other TCGOp arguments to select ct. */
+        op.opc = opc;
+        ct = target_lookup_constraint(&op);
+        assert(ct != NULL);
+
+        /* All arguments must support registers.  */
+        for (i = 0; i < nb_args; ++i) {
+            assert(ct[i].regs != 0);
+        }
+
+        /* Alias links must match, forward and backward.  */
+        for (i = 0; i < nb_oargs; ++i) {
+            int aidx = ct[i].alias_index;
+
+            assert(!ct[i].ialias);
+            if (ct[i].oalias) {
+                assert(aidx >= nb_oargs && aidx < nb_args);
+                assert(ct[aidx].ialias);
+                assert(ct[aidx].alias_index == i);
+            } else {
+                assert(aidx == 0);
+            }
+        }
+        for (i = nb_oargs; i < nb_args; ++i) {
+            int aidx = ct[i].alias_index;
+
+            assert(!ct[i].oalias);
+            if (ct[i].ialias) {
+                assert(aidx < nb_oargs);
+                assert(ct[aidx].oalias);
+                assert(ct[aidx].alias_index == i);
+            } else {
+                assert(aidx == 0);
+            }
+        }
+
+        /* Sorted argument lists are separate between inputs and outputs.  */
+        for (i = sorted = 0; i < nb_oargs; ++i) {
+            int sidx = ct[i].sort_index;
+            assert(sidx < nb_args);
+            assert((sorted & (1 << sidx)) == 0);
+            sorted |= 1 << sidx;
+
+        }
+        assert(sorted == (1 << nb_oargs) - 1);
+        for (i = nb_oargs, sorted = 0; i < nb_args; ++i) {
+            int sidx = ct[i].sort_index;
+            assert(sidx < nb_args);
+            assert((sorted & (1 << sidx)) == 0);
+            sorted |= 1 << sidx;
+        }
+        assert(sorted == ((1 << nb_iargs) - 1) << nb_oargs);
+    }
+}
+#endif /* !TCG_TARGET_LOOKUP_CONSTRAINT */
 
 void tcg_op_remove(TCGContext *s, TCGOp *op)
 {
@@ -2496,6 +2594,7 @@ static void liveness_pass_1(TCGContext *s)
         TCGTemp *ts;
         TCGOpcode opc = op->opc;
         const TCGOpDef *def = &tcg_op_defs[opc];
+        const TCGArgConstraint *args_ct;
 
         switch (opc) {
         case INDEX_op_call:
@@ -2754,8 +2853,9 @@ static void liveness_pass_1(TCGContext *s)
                 break;
 
             default:
+                args_ct = target_lookup_constraint(op);
                 for (i = nb_oargs; i < nb_oargs + nb_iargs; i++) {
-                    const TCGArgConstraint *ct = &def->args_ct[i];
+                    const TCGArgConstraint *ct = args_ct + i;
                     TCGRegSet set, *pset;
 
                     ts = arg_temp(op->args[i]);
@@ -3379,10 +3479,13 @@ static void tcg_reg_alloc_op(TCGContext *s, const TCGOp *op)
     int i, k, nb_iargs, nb_oargs;
     TCGReg reg;
     TCGArg arg;
+    const TCGArgConstraint *args_ct;
     const TCGArgConstraint *arg_ct;
     TCGTemp *ts;
     TCGArg new_args[TCG_MAX_OP_ARGS];
     int const_args[TCG_MAX_OP_ARGS];
+
+    args_ct = target_lookup_constraint(op);
 
     nb_oargs = def->nb_oargs;
     nb_iargs = def->nb_iargs;
@@ -3399,9 +3502,9 @@ static void tcg_reg_alloc_op(TCGContext *s, const TCGOp *op)
     for (k = 0; k < nb_iargs; k++) {
         TCGRegSet i_preferred_regs, o_preferred_regs;
 
-        i = def->args_ct[nb_oargs + k].sort_index;
+        i = args_ct[nb_oargs + k].sort_index;
         arg = op->args[i];
-        arg_ct = &def->args_ct[i];
+        arg_ct = args_ct + i;
         ts = arg_temp(arg);
 
         if (ts->val_type == TEMP_VAL_CONST
@@ -3435,8 +3538,8 @@ static void tcg_reg_alloc_op(TCGContext *s, const TCGOp *op)
                     int k2, i2;
                     reg = ts->reg;
                     for (k2 = 0 ; k2 < k ; k2++) {
-                        i2 = def->args_ct[nb_oargs + k2].sort_index;
-                        if (def->args_ct[i2].ialias && reg == new_args[i2]) {
+                        i2 = args_ct[nb_oargs + k2].sort_index;
+                        if (args_ct[i2].ialias && reg == new_args[i2]) {
                             goto allocate_in_reg;
                         }
                     }
@@ -3491,9 +3594,9 @@ static void tcg_reg_alloc_op(TCGContext *s, const TCGOp *op)
         
         /* satisfy the output constraints */
         for(k = 0; k < nb_oargs; k++) {
-            i = def->args_ct[k].sort_index;
+            i = args_ct[k].sort_index;
             arg = op->args[i];
-            arg_ct = &def->args_ct[i];
+            arg_ct = args_ct + i;
             ts = arg_temp(arg);
             if (arg_ct->oalias && !const_args[arg_ct->alias_index]) {
                 reg = new_args[arg_ct->alias_index];

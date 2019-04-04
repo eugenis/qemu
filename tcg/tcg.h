@@ -1058,7 +1058,9 @@ typedef struct TCGOpDef {
     const char *name;
     uint8_t nb_oargs, nb_iargs, nb_cargs, nb_args;
     uint8_t flags;
+#ifndef TCG_TARGET_LOOKUP_CONSTRAINT
     TCGArgConstraint *args_ct;
+#endif
 #if defined(CONFIG_DEBUG_TCG)
     int used;
 #endif
