@@ -2116,8 +2116,6 @@ static int get_constraint_priority(const TCGOpDef *def, int k)
     if (arg_ct->ct & TCG_CT_ALIAS) {
         /* an alias is equivalent to a single register */
         n = 1;
-    } else if (!(arg_ct->ct & TCG_CT_REG)) {
-        return 0;
     } else {
         n = ctpop64(arg_ct->regs);
     }
@@ -2187,7 +2185,6 @@ static void process_op_defs(TCGContext *s)
                         int oarg = *ct_str - '0';
                         tcg_debug_assert(ct_str == tdefs->args_ct_str[i]);
                         tcg_debug_assert(oarg < def->nb_oargs);
-                        tcg_debug_assert(def->args_ct[oarg].ct & TCG_CT_REG);
                         /* TCG_CT_ALIAS is for the output arguments.
                            The input is tagged with TCG_CT_IALIAS. */
                         def->args_ct[i] = def->args_ct[oarg];
