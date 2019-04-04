@@ -1095,6 +1095,11 @@ static bool have_field1(const DisasFields *f, enum DisasFieldIndexO c)
 static int get_field1(const DisasFields *f, enum DisasFieldIndexO o,
                       enum DisasFieldIndexC c)
 {
+    if (!have_field1(f, o)) {
+        fprintf(stderr, "Instruction: %" PRIx64"\n", f->raw_insn);
+        fflush(stderr);
+        exit(1);
+    }
     assert(have_field1(f, o));
     return f->c[c];
 }
