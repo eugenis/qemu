@@ -120,46 +120,6 @@ static inline bool patch_reloc(tcg_insn_unit *code_ptr, int type,
 #define TCG_CT_CONST_ZERO 0x400
 #define TCG_CT_CONST_MONE 0x800
 
-/* parse target specific constraints */
-static const char *target_parse_constraint(TCGArgConstraint *ct,
-                                           const char *ct_str, TCGType type)
-{
-    switch (*ct_str++) {
-    case 'r': /* general registers */
-        ct->regs |= 0xffffffffu;
-        break;
-    case 'w': /* advsimd registers */
-        ct->regs |= 0xffffffff00000000ull;
-        break;
-    case 'l': /* qemu_ld / qemu_st address, data_reg */
-        ct->regs = 0xffffffffu;
-#ifdef CONFIG_SOFTMMU
-        /* x0 and x1 will be overwritten when reading the tlb entry,
-           and x2, and x3 for helper args, better to avoid using them. */
-        tcg_regset_reset_reg(ct->regs, TCG_REG_X0);
-        tcg_regset_reset_reg(ct->regs, TCG_REG_X1);
-        tcg_regset_reset_reg(ct->regs, TCG_REG_X2);
-        tcg_regset_reset_reg(ct->regs, TCG_REG_X3);
-#endif
-        break;
-    case 'A': /* Valid for arithmetic immediate (positive or negative).  */
-        ct->ct |= TCG_CT_CONST_AIMM;
-        break;
-    case 'L': /* Valid for logical immediate.  */
-        ct->ct |= TCG_CT_CONST_LIMM;
-        break;
-    case 'M': /* minus one */
-        ct->ct |= TCG_CT_CONST_MONE;
-        break;
-    case 'Z': /* zero */
-        ct->ct |= TCG_CT_CONST_ZERO;
-        break;
-    default:
-        return NULL;
-    }
-    return ct_str;
-}
-
 /* Match a constant valid for addition (12-bit, optionally shifted).  */
 static inline bool is_aimm(uint64_t val)
 {
@@ -2276,35 +2236,115 @@ void tcg_expand_vec_op(TCGOpcode opc, TCGType type, unsigned vece,
 {
 }
 
-static const TCGTargetOpDef *tcg_target_op_def(TCGOpcode op)
-{
-    static const TCGTargetOpDef r = { .args_ct_str = { "r" } };
-    static const TCGTargetOpDef r_r = { .args_ct_str = { "r", "r" } };
-    static const TCGTargetOpDef w_w = { .args_ct_str = { "w", "w" } };
-    static const TCGTargetOpDef w_r = { .args_ct_str = { "w", "r" } };
-    static const TCGTargetOpDef w_wr = { .args_ct_str = { "w", "wr" } };
-    static const TCGTargetOpDef r_l = { .args_ct_str = { "r", "l" } };
-    static const TCGTargetOpDef r_rA = { .args_ct_str = { "r", "rA" } };
-    static const TCGTargetOpDef rZ_r = { .args_ct_str = { "rZ", "r" } };
-    static const TCGTargetOpDef lZ_l = { .args_ct_str = { "lZ", "l" } };
-    static const TCGTargetOpDef r_r_r = { .args_ct_str = { "r", "r", "r" } };
-    static const TCGTargetOpDef w_w_w = { .args_ct_str = { "w", "w", "w" } };
-    static const TCGTargetOpDef w_w_wZ = { .args_ct_str = { "w", "w", "wZ" } };
-    static const TCGTargetOpDef r_r_ri = { .args_ct_str = { "r", "r", "ri" } };
-    static const TCGTargetOpDef r_r_rA = { .args_ct_str = { "r", "r", "rA" } };
-    static const TCGTargetOpDef r_r_rL = { .args_ct_str = { "r", "r", "rL" } };
-    static const TCGTargetOpDef r_r_rAL
-        = { .args_ct_str = { "r", "r", "rAL" } };
-    static const TCGTargetOpDef dep
-        = { .args_ct_str = { "r", "0", "rZ" } };
-    static const TCGTargetOpDef movc
-        = { .args_ct_str = { "r", "r", "rA", "rZ", "rZ" } };
-    static const TCGTargetOpDef add2
-        = { .args_ct_str = { "r", "r", "rZ", "rZ", "rA", "rMZ" } };
 
-    switch (op) {
+#define GENERAL_REGS  0xffffffffu
+#define VECTOR_REGS   0xffffffff00000000ull
+/*
+ * x0 and x1 will be overwritten when reading the tlb entry,
+ * and x2, and x3 for helper args, better to avoid using them.
+ */
+#define QADDR_REGS    0xfffffff0u
+
+static const TCGArgConstraint *target_lookup_constraint(const TCGOp *op)
+{
+    static const TCGArgConstraint r[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0 }
+    };
+    static const TCGArgConstraint r_r[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 1 }
+    };
+    static const TCGArgConstraint w_w[] = {
+        { .regs = VECTOR_REGS, .sort_index = 0 },
+        { .regs = VECTOR_REGS, .sort_index = 1 }
+    };
+    static const TCGArgConstraint w_r[] = {
+        { .regs = VECTOR_REGS, .sort_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 1 }
+    };
+    static const TCGArgConstraint w_wr[] = {
+        { .regs = VECTOR_REGS, .sort_index = 0 },
+        { .regs = VECTOR_REGS | GENERAL_REGS, .sort_index = 1 }
+    };
+    static const TCGArgConstraint r_l[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0 },
+        { .regs = QADDR_REGS, .sort_index = 1 }
+    };
+    static const TCGArgConstraint r_rA[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 1, .ct = TCG_CT_CONST_AIMM }
+    };
+    static const TCGArgConstraint rZ_r[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0, .ct = TCG_CT_CONST_ZERO },
+        { .regs = GENERAL_REGS, .sort_index = 1 }
+    };
+    static const TCGArgConstraint lZ_l[] = {
+        { .regs = QADDR_REGS, .sort_index = 0, .ct = TCG_CT_CONST_ZERO },
+        { .regs = QADDR_REGS, .sort_index = 1 }
+    };
+    static const TCGArgConstraint r_r_r[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 1 },
+        { .regs = GENERAL_REGS, .sort_index = 2 }
+    };
+    static const TCGArgConstraint w_w_w[] = {
+        { .regs = VECTOR_REGS, .sort_index = 0 },
+        { .regs = VECTOR_REGS, .sort_index = 1 },
+        { .regs = VECTOR_REGS, .sort_index = 2 }
+    };
+    static const TCGArgConstraint w_w_wZ[] = {
+        { .regs = VECTOR_REGS, .sort_index = 0 },
+        { .regs = VECTOR_REGS, .sort_index = 1 },
+        { .regs = VECTOR_REGS, .sort_index = 2, .ct = TCG_CT_CONST_ZERO }
+    };
+    static const TCGArgConstraint r_r_ri[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 1 },
+        { .regs = GENERAL_REGS, .sort_index = 2, .ct = TCG_CT_CONST }
+    };
+    static const TCGArgConstraint r_r_rA[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 1 },
+        { .regs = GENERAL_REGS, .sort_index = 2, .ct = TCG_CT_CONST_AIMM }
+    };
+    static const TCGArgConstraint r_r_rL[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 1 },
+        { .regs = GENERAL_REGS, .sort_index = 2, .ct = TCG_CT_CONST_LIMM }
+    };
+    static const TCGArgConstraint r_r_rAL[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 1 },
+        { .regs = GENERAL_REGS, .sort_index = 2,
+          .ct = TCG_CT_CONST_AIMM | TCG_CT_CONST_LIMM }
+    };
+    static const TCGArgConstraint dep[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0,
+          .oalias = 1, .alias_index = 1 },
+        { .regs = GENERAL_REGS, .sort_index = 1,
+          .ialias = 1, .alias_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 2, .ct = TCG_CT_CONST_ZERO }
+    };
+    static const TCGArgConstraint movc[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 1 },
+        { .regs = GENERAL_REGS, .sort_index = 2, .ct = TCG_CT_CONST_AIMM },
+        { .regs = GENERAL_REGS, .sort_index = 3, .ct = TCG_CT_CONST_ZERO },
+        { .regs = GENERAL_REGS, .sort_index = 4, .ct = TCG_CT_CONST_ZERO }
+    };
+    static const TCGArgConstraint add2[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 1 },
+        { .regs = GENERAL_REGS, .sort_index = 2, .ct = TCG_CT_CONST_ZERO },
+        { .regs = GENERAL_REGS, .sort_index = 3, .ct = TCG_CT_CONST_ZERO },
+        { .regs = GENERAL_REGS, .sort_index = 4, .ct = TCG_CT_CONST_AIMM },
+        { .regs = GENERAL_REGS, .sort_index = 5,
+          .ct = TCG_CT_CONST_MONE | TCG_CT_CONST_ZERO }
+    };
+
+    switch (op->opc) {
     case INDEX_op_goto_ptr:
-        return &r;
+        return r;
 
     case INDEX_op_ld8u_i32:
     case INDEX_op_ld8s_i32:
@@ -2343,7 +2383,7 @@ static const TCGTargetOpDef *tcg_target_op_def(TCGOpcode op)
     case INDEX_op_extract_i64:
     case INDEX_op_sextract_i32:
     case INDEX_op_sextract_i64:
-        return &r_r;
+        return r_r;
 
     case INDEX_op_st8_i32:
     case INDEX_op_st16_i32:
@@ -2352,7 +2392,7 @@ static const TCGTargetOpDef *tcg_target_op_def(TCGOpcode op)
     case INDEX_op_st16_i64:
     case INDEX_op_st32_i64:
     case INDEX_op_st_i64:
-        return &rZ_r;
+        return rZ_r;
 
     case INDEX_op_add_i32:
     case INDEX_op_add_i64:
@@ -2360,7 +2400,7 @@ static const TCGTargetOpDef *tcg_target_op_def(TCGOpcode op)
     case INDEX_op_sub_i64:
     case INDEX_op_setcond_i32:
     case INDEX_op_setcond_i64:
-        return &r_r_rA;
+        return r_r_rA;
 
     case INDEX_op_mul_i32:
     case INDEX_op_mul_i64:
@@ -2374,7 +2414,7 @@ static const TCGTargetOpDef *tcg_target_op_def(TCGOpcode op)
     case INDEX_op_remu_i64:
     case INDEX_op_muluh_i64:
     case INDEX_op_mulsh_i64:
-        return &r_r_r;
+        return r_r_r;
 
     case INDEX_op_and_i32:
     case INDEX_op_and_i64:
@@ -2388,7 +2428,7 @@ static const TCGTargetOpDef *tcg_target_op_def(TCGOpcode op)
     case INDEX_op_orc_i64:
     case INDEX_op_eqv_i32:
     case INDEX_op_eqv_i64:
-        return &r_r_rL;
+        return r_r_rL;
 
     case INDEX_op_shl_i32:
     case INDEX_op_shr_i32:
@@ -2400,38 +2440,38 @@ static const TCGTargetOpDef *tcg_target_op_def(TCGOpcode op)
     case INDEX_op_sar_i64:
     case INDEX_op_rotl_i64:
     case INDEX_op_rotr_i64:
-        return &r_r_ri;
+        return r_r_ri;
 
     case INDEX_op_clz_i32:
     case INDEX_op_ctz_i32:
     case INDEX_op_clz_i64:
     case INDEX_op_ctz_i64:
-        return &r_r_rAL;
+        return r_r_rAL;
 
     case INDEX_op_brcond_i32:
     case INDEX_op_brcond_i64:
-        return &r_rA;
+        return r_rA;
 
     case INDEX_op_movcond_i32:
     case INDEX_op_movcond_i64:
-        return &movc;
+        return movc;
 
     case INDEX_op_qemu_ld_i32:
     case INDEX_op_qemu_ld_i64:
-        return &r_l;
+        return r_l;
     case INDEX_op_qemu_st_i32:
     case INDEX_op_qemu_st_i64:
-        return &lZ_l;
+        return lZ_l;
 
     case INDEX_op_deposit_i32:
     case INDEX_op_deposit_i64:
-        return &dep;
+        return dep;
 
     case INDEX_op_add2_i32:
     case INDEX_op_add2_i64:
     case INDEX_op_sub2_i32:
     case INDEX_op_sub2_i64:
-        return &add2;
+        return add2;
 
     case INDEX_op_add_vec:
     case INDEX_op_sub_vec:
@@ -2449,20 +2489,20 @@ static const TCGTargetOpDef *tcg_target_op_def(TCGOpcode op)
     case INDEX_op_smin_vec:
     case INDEX_op_umax_vec:
     case INDEX_op_umin_vec:
-        return &w_w_w;
+        return w_w_w;
     case INDEX_op_not_vec:
     case INDEX_op_neg_vec:
     case INDEX_op_shli_vec:
     case INDEX_op_shri_vec:
     case INDEX_op_sari_vec:
-        return &w_w;
+        return w_w;
     case INDEX_op_ld_vec:
     case INDEX_op_st_vec:
-        return &w_r;
+        return w_r;
     case INDEX_op_dup_vec:
-        return &w_wr;
+        return w_wr;
     case INDEX_op_cmp_vec:
-        return &w_w_wZ;
+        return w_w_wZ;
 
     default:
         return NULL;
