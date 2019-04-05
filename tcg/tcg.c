@@ -64,9 +64,6 @@
 /* Forward declarations for functions declared in tcg-target.inc.c and
    used here. */
 static void tcg_target_init(TCGContext *s);
-#ifndef TCG_TARGET_LOOKUP_CONSTRAINT
-static const TCGTargetOpDef *tcg_target_op_def(TCGOpcode);
-#endif
 static void tcg_target_qemu_prologue(TCGContext *s);
 static bool patch_reloc(tcg_insn_unit *code_ptr, int type,
                         intptr_t value, intptr_t addend);
@@ -100,10 +97,6 @@ static void tcg_register_jit_int(void *buf, size_t size,
     __attribute__((unused));
 
 /* Forward declarations for functions declared and used in tcg-target.inc.c. */
-#ifndef TCG_TARGET_LOOKUP_CONSTRAINT
-static const char *target_parse_constraint(TCGArgConstraint *ct,
-                                           const char *ct_str, TCGType type);
-#endif
 static const TCGArgConstraint *target_lookup_constraint(const TCGOp *op);
 static void tcg_out_ld(TCGContext *s, TCGType type, TCGReg ret, TCGReg arg1,
                        intptr_t arg2);
@@ -892,9 +885,7 @@ static const TCGHelperInfo all_helpers[] = {
 static GHashTable *helper_table;
 
 static int indirect_reg_alloc_order[ARRAY_SIZE(tcg_target_reg_alloc_order)];
-#ifndef TCG_TARGET_LOOKUP_CONSTRAINT
-static void process_op_defs(TCGContext *s);
-#elif defined(CONFIG_DEBUG_TCG)
+#ifdef CONFIG_DEBUG_TCG
 static void validate_constraints(TCGContext *s);
 #endif
 static TCGTemp *tcg_global_reg_new_internal(TCGContext *s, TCGType type,
@@ -910,29 +901,7 @@ void tcg_context_init(TCGContext *s)
 
     tcg_target_init(s);
 
-#ifndef TCG_TARGET_LOOKUP_CONSTRAINT
-    {
-        /* Count total number of arguments and allocate space.  */
-        int total_args, op;
-        TCGArgConstraint *args_ct;
-        TCGOpDef *def;
-
-        for (op = total_args = 0; op < NB_OPS; op++) {
-            def = &tcg_op_defs[op];
-            total_args += def->nb_iargs + def->nb_oargs;
-        }
-
-        args_ct = g_new(TCGArgConstraint, total_args);
-
-        for (op = 0; op < NB_OPS; op++) {
-            def = &tcg_op_defs[op];
-            def->args_ct = args_ct;
-            args_ct += def->nb_iargs + def->nb_oargs;
-        }
-
-        process_op_defs(s);
-    }
-#elif defined(CONFIG_DEBUG_TCG)
+#ifdef CONFIG_DEBUG_TCG
     validate_constraints(s);
 #endif
 
@@ -2121,127 +2090,7 @@ static void tcg_dump_ops(TCGContext *s, bool have_prefs)
     }
 }
 
-#ifndef TCG_TARGET_LOOKUP_CONSTRAINT
-/* we give more priority to constraints with less registers */
-static int get_constraint_priority(const TCGOpDef *def, int k)
-{
-    const TCGArgConstraint *arg_ct = &def->args_ct[k];
-    int n;
-
-    if (arg_ct->oalias || arg_ct->ialias) {
-        /* an alias is equivalent to a single register */
-        n = 1;
-    } else {
-        n = ctpop64(arg_ct->regs);
-    }
-    return TCG_TARGET_NB_REGS - n + 1;
-}
-
-/* sort from highest priority to lowest */
-static void sort_constraints(TCGOpDef *def, int start, int n)
-{
-    int i, j;
-    TCGArgConstraint *a = def->args_ct;
-
-    for (i = 0; i < n; i++) {
-        a[start + i].sort_index = start + i;
-    }
-    if (n <= 1) {
-        return;
-    }
-    for (i = 0; i < n - 1; i++) {
-        for (j = i + 1; j < n; j++) {
-            int p1 = get_constraint_priority(def, a[start + i].sort_index);
-            int p2 = get_constraint_priority(def, a[start + j].sort_index);
-            if (p1 < p2) {
-                int tmp = a[start + i].sort_index;
-                a[start + i].sort_index = a[start + j].sort_index;
-                a[start + j].sort_index = tmp;
-            }
-        }
-    }
-}
-
-static void process_op_defs(TCGContext *s)
-{
-    TCGOpcode op;
-
-    for (op = 0; op < NB_OPS; op++) {
-        TCGOpDef *def = &tcg_op_defs[op];
-        const TCGTargetOpDef *tdefs;
-        TCGType type;
-        int i, nb_args;
-
-        if (def->flags & TCG_OPF_NOT_PRESENT) {
-            continue;
-        }
-
-        nb_args = def->nb_iargs + def->nb_oargs;
-        if (nb_args == 0) {
-            continue;
-        }
-
-        tdefs = tcg_target_op_def(op);
-        /* Missing TCGTargetOpDef entry. */
-        tcg_debug_assert(tdefs != NULL);
-
-        type = (def->flags & TCG_OPF_64BIT ? TCG_TYPE_I64 : TCG_TYPE_I32);
-        for (i = 0; i < nb_args; i++) {
-            const char *ct_str = tdefs->args_ct_str[i];
-            /* Incomplete TCGTargetOpDef entry. */
-            tcg_debug_assert(ct_str != NULL);
-
-            def->args_ct[i].regs = 0;
-            def->args_ct[i].ct = 0;
-            while (*ct_str != '\0') {
-                switch(*ct_str) {
-                case '0' ... '9':
-                    {
-                        int oarg = *ct_str - '0';
-                        tcg_debug_assert(ct_str == tdefs->args_ct_str[i]);
-                        tcg_debug_assert(oarg < def->nb_oargs);
-                        def->args_ct[i] = def->args_ct[oarg];
-                        /* The output sets oalias.  */
-                        def->args_ct[oarg].oalias = 1;
-                        def->args_ct[oarg].alias_index = i;
-                        /* The input sets ialias. */
-                        def->args_ct[i].ialias = 1;
-                        def->args_ct[i].alias_index = oarg;
-                    }
-                    ct_str++;
-                    break;
-                case '&':
-                    def->args_ct[i].newreg = 1;
-                    ct_str++;
-                    break;
-                case 'i':
-                    def->args_ct[i].ct |= TCG_CT_CONST;
-                    ct_str++;
-                    break;
-                default:
-                    ct_str = target_parse_constraint(&def->args_ct[i],
-                                                     ct_str, type);
-                    /* Typo in TCGTargetOpDef constraint. */
-                    tcg_debug_assert(ct_str != NULL);
-                }
-            }
-        }
-
-        /* TCGTargetOpDef entry with too much information? */
-        tcg_debug_assert(i == TCG_MAX_OP_ARGS || tdefs->args_ct_str[i] == NULL);
-
-        /* sort the constraints (XXX: this is just an heuristic) */
-        sort_constraints(def, 0, def->nb_oargs);
-        sort_constraints(def, def->nb_oargs, def->nb_iargs);
-    }
-}
-
-static const TCGArgConstraint *target_lookup_constraint(const TCGOp *op)
-{
-    TCGOpDef *def = &tcg_op_defs[op->opc];
-    return def->args_ct;
-}
-#elif defined(CONFIG_DEBUG_TCG)
+#ifdef CONFIG_DEBUG_TCG
 static void validate_constraints(TCGContext *s)
 {
     TCGOp op = { };
@@ -2317,7 +2166,7 @@ static void validate_constraints(TCGContext *s)
         assert(sorted == ((1 << nb_iargs) - 1) << nb_oargs);
     }
 }
-#endif /* !TCG_TARGET_LOOKUP_CONSTRAINT */
+#endif /* CONFIG_DEBUG_TCG */
 
 void tcg_op_remove(TCGContext *s, TCGOp *op)
 {
