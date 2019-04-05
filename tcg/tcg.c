@@ -2113,7 +2113,7 @@ static int get_constraint_priority(const TCGOpDef *def, int k)
     const TCGArgConstraint *arg_ct = &def->args_ct[k];
     int n;
 
-    if (arg_ct->ct & TCG_CT_ALIAS) {
+    if (arg_ct->oalias || arg_ct->ialias) {
         /* an alias is equivalent to a single register */
         n = 1;
     } else {
@@ -2185,18 +2185,18 @@ static void process_op_defs(TCGContext *s)
                         int oarg = *ct_str - '0';
                         tcg_debug_assert(ct_str == tdefs->args_ct_str[i]);
                         tcg_debug_assert(oarg < def->nb_oargs);
-                        /* TCG_CT_ALIAS is for the output arguments.
-                           The input is tagged with TCG_CT_IALIAS. */
                         def->args_ct[i] = def->args_ct[oarg];
-                        def->args_ct[oarg].ct |= TCG_CT_ALIAS;
+                        /* The output sets oalias.  */
+                        def->args_ct[oarg].oalias = 1;
                         def->args_ct[oarg].alias_index = i;
-                        def->args_ct[i].ct |= TCG_CT_IALIAS;
+                        /* The input sets ialias. */
+                        def->args_ct[i].ialias = 1;
                         def->args_ct[i].alias_index = oarg;
                     }
                     ct_str++;
                     break;
                 case '&':
-                    def->args_ct[i].ct |= TCG_CT_NEWREG;
+                    def->args_ct[i].newreg = 1;
                     ct_str++;
                     break;
                 case 'i':
@@ -2763,7 +2763,7 @@ static void liveness_pass_1(TCGContext *s)
                     set = *pset;
 
                     set &= ct->regs;
-                    if (ct->ct & TCG_CT_IALIAS) {
+                    if (ct->ialias) {
                         set &= op->output_pref[ct->alias_index];
                     }
                     /* If the combination is not possible, restart.  */
@@ -3413,7 +3413,7 @@ static void tcg_reg_alloc_op(TCGContext *s, const TCGOp *op)
         }
 
         i_preferred_regs = o_preferred_regs = 0;
-        if (arg_ct->ct & TCG_CT_IALIAS) {
+        if (arg_ct->ialias) {
             o_preferred_regs = op->output_pref[arg_ct->alias_index];
             if (ts->fixed_reg) {
                 /* if fixed register, we must allocate a new register
@@ -3436,8 +3436,7 @@ static void tcg_reg_alloc_op(TCGContext *s, const TCGOp *op)
                     reg = ts->reg;
                     for (k2 = 0 ; k2 < k ; k2++) {
                         i2 = def->args_ct[nb_oargs + k2].sort_index;
-                        if ((def->args_ct[i2].ct & TCG_CT_IALIAS) &&
-                            reg == new_args[i2]) {
+                        if (def->args_ct[i2].ialias && reg == new_args[i2]) {
                             goto allocate_in_reg;
                         }
                     }
@@ -3496,10 +3495,9 @@ static void tcg_reg_alloc_op(TCGContext *s, const TCGOp *op)
             arg = op->args[i];
             arg_ct = &def->args_ct[i];
             ts = arg_temp(arg);
-            if ((arg_ct->ct & TCG_CT_ALIAS)
-                && !const_args[arg_ct->alias_index]) {
+            if (arg_ct->oalias && !const_args[arg_ct->alias_index]) {
                 reg = new_args[arg_ct->alias_index];
-            } else if (arg_ct->ct & TCG_CT_NEWREG) {
+            } else if (arg_ct->newreg) {
                 reg = tcg_reg_alloc(s, arg_ct->regs,
                                     i_allocated_regs | o_allocated_regs,
                                     op->output_pref[k], ts->indirect_base);
