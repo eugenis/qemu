@@ -1965,7 +1965,6 @@ static void tcg_out_qemu_st_direct(TCGContext *s, TCGReg datalo, TCGReg datahi,
                                    TCGReg base, int index, intptr_t ofs,
                                    int seg, TCGMemOp memop)
 {
-    const TCGReg scratch = TCG_REG_L0;
     bool use_movbe = false;
     int movop = OPC_MOVL_EvGv;
 
@@ -1978,15 +1977,7 @@ static void tcg_out_qemu_st_direct(TCGContext *s, TCGReg datalo, TCGReg datahi,
 
     switch (memop & MO_SIZE) {
     case MO_8:
-        /*
-         * In 32-bit mode, 8-bit stores can only happen from [abcd]x.
-         * ??? Adjust constraints such that this is is forced, then
-         * we won't need a scratch at all for user-only.
-         */
-        if (TCG_TARGET_REG_BITS == 32 && datalo >= 4) {
-            tcg_out_mov(s, TCG_TYPE_I32, scratch, datalo);
-            datalo = scratch;
-        }
+        tcg_debug_assert(TCG_TARGET_REG_BITS == 64 || datalo < 4);
         tcg_out_modrm_sib_offset(s, OPC_MOVB_EvGv + P_REXB_R + seg,
                                  datalo, base, index, 0, ofs);
         break;
@@ -2735,13 +2726,16 @@ static void tcg_out_vec_op(TCGContext *s, TCGOpcode opc,
 # define BYTE_REGS         BYTEHI_REGS
 #endif
 /* See the definition of TCG_REG_L0 and L1 above.  */
-#if TCG_TARGET_REG_BITS == 32
-# define QADDR_REGS        (GENERAL_REGS & ~(EAX_REGS | EDX_REGS))
+#ifndef CONFIG_SOFTMMU
+# define QRESERVE_REGS     0
+#elif TCG_TARGET_REG_BITS == 32
+# define QRESERVE_REGS     (EAX_REGS | EDX_REGS)
 #elif defined(_WIN64)
-# define QADDR_REGS        (GENERAL_REGS & ~(ECX_REGS | EDX_REGS))
+# define QRESERVE_REGS     (ECX_REGS | EDX_REGS)
 #else
-# define QADDR_REGS        (GENERAL_REGS & ~(EDI_REGS | ESI_REGS))
+# define QRESERVE_REGS     (EDI_REGS | ESI_REGS)
 #endif
+#define QADDR_REGS         (GENERAL_REGS & ~QRESERVE_REGS)
 
 static const TCGArgConstraint *target_lookup_constraint(const TCGOp *op)
 {
@@ -2827,6 +2821,10 @@ static const TCGArgConstraint *target_lookup_constraint(const TCGOp *op)
         { .regs = QADDR_REGS, .sort_index = 0 },
         { .regs = QADDR_REGS, .sort_index = 1 },
     };
+    static const TCGArgConstraint qL_L[] = {
+        { .regs = BYTE_REGS & ~QRESERVE_REGS, .sort_index = 0 },
+        { .regs = QADDR_REGS, .sort_index = 1 },
+    };
     static const TCGArgConstraint r_L_L[] = {
         { .regs = GENERAL_REGS, .sort_index = 0 },
         { .regs = QADDR_REGS, .sort_index = 1 },
@@ -2839,6 +2837,11 @@ static const TCGArgConstraint *target_lookup_constraint(const TCGOp *op)
     };
     static const TCGArgConstraint L_L_L[] = {
         { .regs = QADDR_REGS, .sort_index = 0 },
+        { .regs = QADDR_REGS, .sort_index = 1 },
+        { .regs = QADDR_REGS, .sort_index = 2 },
+    };
+    static const TCGArgConstraint qL_L_L[] = {
+        { .regs = BYTE_REGS & ~QRESERVE_REGS, .sort_index = 0 },
         { .regs = QADDR_REGS, .sort_index = 1 },
         { .regs = QADDR_REGS, .sort_index = 2 },
     };
@@ -3084,7 +3087,18 @@ static const TCGArgConstraint *target_lookup_constraint(const TCGOp *op)
     case INDEX_op_qemu_ld_i32:
         return TARGET_LONG_BITS <= TCG_TARGET_REG_BITS ? r_L : r_L_L;
     case INDEX_op_qemu_st_i32:
-        return TARGET_LONG_BITS <= TCG_TARGET_REG_BITS ? L_L : L_L_L;
+        if (TCG_TARGET_REG_BITS == 64) {
+            return L_L;
+        } else {
+            TCGMemOpIdx oi = op->args[TARGET_LONG_BITS == 32 ? 2 : 3];
+            TCGMemOp size = get_memop(oi) & MO_SIZE;
+
+            if (TARGET_LONG_BITS == 32) {
+                return size == MO_8 ? qL_L : L_L;
+            } else {
+                return size == MO_8 ? qL_L_L : L_L_L;
+            }
+        }
     case INDEX_op_qemu_ld_i64:
         return (TCG_TARGET_REG_BITS == 64 ? r_L
                 : TARGET_LONG_BITS <= TCG_TARGET_REG_BITS ? r_r_L
