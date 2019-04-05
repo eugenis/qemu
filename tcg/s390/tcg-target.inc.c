@@ -402,46 +402,6 @@ static bool patch_reloc(tcg_insn_unit *code_ptr, int type,
     return false;
 }
 
-/* parse target specific constraints */
-static const char *target_parse_constraint(TCGArgConstraint *ct,
-                                           const char *ct_str, TCGType type)
-{
-    switch (*ct_str++) {
-    case 'r':                  /* all registers */
-        ct->regs = 0xffff;
-        break;
-    case 'L':                  /* qemu_ld/st constraint */
-        ct->regs = 0xffff;
-        tcg_regset_reset_reg(ct->regs, TCG_REG_R2);
-        tcg_regset_reset_reg(ct->regs, TCG_REG_R3);
-        tcg_regset_reset_reg(ct->regs, TCG_REG_R4);
-        break;
-    case 'a':                  /* force R2 for division */
-        ct->regs = 0;
-        tcg_regset_set_reg(ct->regs, TCG_REG_R2);
-        break;
-    case 'b':                  /* force R3 for division */
-        ct->regs = 0;
-        tcg_regset_set_reg(ct->regs, TCG_REG_R3);
-        break;
-    case 'A':
-        ct->ct |= TCG_CT_CONST_S33;
-        break;
-    case 'I':
-        ct->ct |= TCG_CT_CONST_S16;
-        break;
-    case 'J':
-        ct->ct |= TCG_CT_CONST_S32;
-        break;
-    case 'Z':
-        ct->ct |= TCG_CT_CONST_ZERO;
-        break;
-    default:
-        return NULL;
-    }
-    return ct_str;
-}
-
 /* Test if a constant matches the constraint. */
 static int tcg_target_const_match(tcg_target_long val, TCGType type,
                                   const TCGArgConstraint *arg_ct)
@@ -2310,27 +2270,134 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
     }
 }
 
-static const TCGTargetOpDef *tcg_target_op_def(TCGOpcode op)
-{
-    static const TCGTargetOpDef r = { .args_ct_str = { "r" } };
-    static const TCGTargetOpDef r_r = { .args_ct_str = { "r", "r" } };
-    static const TCGTargetOpDef r_L = { .args_ct_str = { "r", "L" } };
-    static const TCGTargetOpDef L_L = { .args_ct_str = { "L", "L" } };
-    static const TCGTargetOpDef r_ri = { .args_ct_str = { "r", "ri" } };
-    static const TCGTargetOpDef r_r_ri = { .args_ct_str = { "r", "r", "ri" } };
-    static const TCGTargetOpDef r_0_ri = { .args_ct_str = { "r", "0", "ri" } };
-    static const TCGTargetOpDef r_0_rI = { .args_ct_str = { "r", "0", "rI" } };
-    static const TCGTargetOpDef r_0_rJ = { .args_ct_str = { "r", "0", "rJ" } };
-    static const TCGTargetOpDef a2_r
-        = { .args_ct_str = { "r", "r", "0", "1", "r", "r" } };
-    static const TCGTargetOpDef a2_ri
-        = { .args_ct_str = { "r", "r", "0", "1", "ri", "r" } };
-    static const TCGTargetOpDef a2_rA
-        = { .args_ct_str = { "r", "r", "0", "1", "rA", "r" } };
+#define GENERAL_REGS    0xffff
+#define QADDR_REGS      (GENERAL_REGS & ~(3 << TCG_REG_R2))  /* w/o R2,R3,R4 */
+#define R2_REGS         (1 << TCG_REG_R2)
+#define R3_REGS         (1 << TCG_REG_R3)
 
-    switch (op) {
+static const TCGArgConstraint *target_lookup_constraint(const TCGOp *op)
+{
+    static const TCGArgConstraint r[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0 }
+    };
+    static const TCGArgConstraint r_r[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 1 }
+    };
+    static const TCGArgConstraint r_L[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0 },
+        { .regs = QADDR_REGS, .sort_index = 1 }
+    };
+    static const TCGArgConstraint L_L[] = {
+        { .regs = QADDR_REGS, .sort_index = 0 },
+        { .regs = QADDR_REGS, .sort_index = 1 }
+    };
+    static const TCGArgConstraint r_ri[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 1, .ct = TCG_CT_CONST }
+    };
+    static const TCGArgConstraint r_r_ri[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 1 },
+        { .regs = GENERAL_REGS, .sort_index = 2, .ct = TCG_CT_CONST }
+    };
+    static const TCGArgConstraint r_0_ri[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0,
+          .oalias = 1, .alias_index = 1 },
+        { .regs = GENERAL_REGS, .sort_index = 1,
+          .ialias = 1, .alias_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 2, .ct = TCG_CT_CONST }
+    };
+    static const TCGArgConstraint r_0_rI[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0,
+          .oalias = 1, .alias_index = 1 },
+        { .regs = GENERAL_REGS, .sort_index = 1,
+          .ialias = 1, .alias_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 2, .ct = TCG_CT_CONST_S16 }
+    };
+    static const TCGArgConstraint r_0_rJ[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0,
+          .oalias = 1, .alias_index = 1 },
+        { .regs = GENERAL_REGS, .sort_index = 1,
+          .ialias = 1, .alias_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 2, .ct = TCG_CT_CONST_S32 }
+    };
+    static const TCGArgConstraint a2_r[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0,
+          .oalias = 1, .alias_index = 2 },
+        { .regs = GENERAL_REGS, .sort_index = 1,
+          .oalias = 1, .alias_index = 3 },
+        { .regs = GENERAL_REGS, .sort_index = 2,
+          .ialias = 1, .alias_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 3,
+          .ialias = 1, .alias_index = 1 },
+        { .regs = GENERAL_REGS, .sort_index = 4 },
+        { .regs = GENERAL_REGS, .sort_index = 5 },
+    };
+    static const TCGArgConstraint a2_ri[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0,
+          .oalias = 1, .alias_index = 2 },
+        { .regs = GENERAL_REGS, .sort_index = 1,
+          .oalias = 1, .alias_index = 3 },
+        { .regs = GENERAL_REGS, .sort_index = 2,
+          .ialias = 1, .alias_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 3,
+          .ialias = 1, .alias_index = 1 },
+        { .regs = GENERAL_REGS, .sort_index = 4, .ct = TCG_CT_CONST },
+        { .regs = GENERAL_REGS, .sort_index = 5 },
+    };
+    static const TCGArgConstraint a2_rA[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0,
+          .oalias = 1, .alias_index = 2 },
+        { .regs = GENERAL_REGS, .sort_index = 1,
+          .oalias = 1, .alias_index = 3 },
+        { .regs = GENERAL_REGS, .sort_index = 2,
+          .ialias = 1, .alias_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 3,
+          .ialias = 1, .alias_index = 1 },
+        { .regs = GENERAL_REGS, .sort_index = 4, .ct = TCG_CT_CONST_S33 },
+        { .regs = GENERAL_REGS, .sort_index = 5 },
+    };
+    static const TCGArgConstraint dep[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 1, .ct = TCG_CT_CONST_ZERO },
+        { .regs = GENERAL_REGS, .sort_index = 2 }
+    };
+    static const TCGArgConstraint movc[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0,
+          .oalias = 1, .alias_index = 4 },
+        { .regs = GENERAL_REGS, .sort_index = 4 },
+        { .regs = GENERAL_REGS, .sort_index = 1, .ct = TCG_CT_CONST },
+        { .regs = GENERAL_REGS, .sort_index = 2 },
+        { .regs = GENERAL_REGS, .sort_index = 3,
+          .ialias = 1, .alias_index = 0 },
+    };
+    static const TCGArgConstraint movc_l[] = {
+        { .regs = GENERAL_REGS, .sort_index = 0,
+          .oalias = 1, .alias_index = 4 },
+        { .regs = GENERAL_REGS, .sort_index = 4 },
+        { .regs = GENERAL_REGS, .sort_index = 1, .ct = TCG_CT_CONST },
+        { .regs = GENERAL_REGS, .sort_index = 2, .ct = TCG_CT_CONST_S16 },
+        { .regs = GENERAL_REGS, .sort_index = 3,
+          .ialias = 1, .alias_index = 0 },
+    };
+    static const TCGArgConstraint div2[] = {
+        { .regs = R3_REGS, .sort_index = 0, .oalias = 1, .alias_index = 2 },
+        { .regs = R2_REGS, .sort_index = 1, .oalias = 1, .alias_index = 3 },
+        { .regs = R3_REGS, .sort_index = 2, .ialias = 1, .alias_index = 0 },
+        { .regs = R2_REGS, .sort_index = 3, .ialias = 1, .alias_index = 1 },
+        { .regs = GENERAL_REGS, .sort_index = 4 },
+    };
+    static const TCGArgConstraint mul2[] = {
+        { .regs = R3_REGS, .sort_index = 0, .oalias = 1, .alias_index = 2 },
+        { .regs = R2_REGS, .sort_index = 1 },
+        { .regs = R3_REGS, .sort_index = 2, .ialias = 1, .alias_index = 0 },
+        { .regs = GENERAL_REGS, .sort_index = 3 },
+    };
+
+    switch (op->opc) {
     case INDEX_op_goto_ptr:
-        return &r;
+        return r;
 
     case INDEX_op_ld8u_i32:
     case INDEX_op_ld8u_i64:
@@ -2351,11 +2418,11 @@ static const TCGTargetOpDef *tcg_target_op_def(TCGOpcode op)
     case INDEX_op_st_i32:
     case INDEX_op_st32_i64:
     case INDEX_op_st_i64:
-        return &r_r;
+        return r_r;
 
     case INDEX_op_add_i32:
     case INDEX_op_add_i64:
-        return &r_r_ri;
+        return r_r_ri;
     case INDEX_op_sub_i32:
     case INDEX_op_sub_i64:
     case INDEX_op_and_i32:
@@ -2364,35 +2431,35 @@ static const TCGTargetOpDef *tcg_target_op_def(TCGOpcode op)
     case INDEX_op_or_i64:
     case INDEX_op_xor_i32:
     case INDEX_op_xor_i64:
-        return (s390_facilities & FACILITY_DISTINCT_OPS ? &r_r_ri : &r_0_ri);
+        return s390_facilities & FACILITY_DISTINCT_OPS ? r_r_ri : r_0_ri;
 
     case INDEX_op_mul_i32:
         /* If we have the general-instruction-extensions, then we have
            MULTIPLY SINGLE IMMEDIATE with a signed 32-bit, otherwise we
            have only MULTIPLY HALFWORD IMMEDIATE, with a signed 16-bit.  */
-        return (s390_facilities & FACILITY_GEN_INST_EXT ? &r_0_ri : &r_0_rI);
+        return s390_facilities & FACILITY_GEN_INST_EXT ? r_0_ri : r_0_rI;
     case INDEX_op_mul_i64:
-        return (s390_facilities & FACILITY_GEN_INST_EXT ? &r_0_rJ : &r_0_rI);
+        return s390_facilities & FACILITY_GEN_INST_EXT ? r_0_rJ : r_0_rI;
 
     case INDEX_op_shl_i32:
     case INDEX_op_shr_i32:
     case INDEX_op_sar_i32:
-        return (s390_facilities & FACILITY_DISTINCT_OPS ? &r_r_ri : &r_0_ri);
+        return s390_facilities & FACILITY_DISTINCT_OPS ? r_r_ri : r_0_ri;
 
     case INDEX_op_shl_i64:
     case INDEX_op_shr_i64:
     case INDEX_op_sar_i64:
-        return &r_r_ri;
+        return r_r_ri;
 
     case INDEX_op_rotl_i32:
     case INDEX_op_rotl_i64:
     case INDEX_op_rotr_i32:
     case INDEX_op_rotr_i64:
-        return &r_r_ri;
+        return r_r_ri;
 
     case INDEX_op_brcond_i32:
     case INDEX_op_brcond_i64:
-        return &r_ri;
+        return r_ri;
 
     case INDEX_op_bswap16_i32:
     case INDEX_op_bswap16_i64:
@@ -2415,58 +2482,42 @@ static const TCGTargetOpDef *tcg_target_op_def(TCGOpcode op)
     case INDEX_op_extu_i32_i64:
     case INDEX_op_extract_i32:
     case INDEX_op_extract_i64:
-        return &r_r;
+        return r_r;
 
     case INDEX_op_clz_i64:
     case INDEX_op_setcond_i32:
     case INDEX_op_setcond_i64:
-        return &r_r_ri;
+        return r_r_ri;
 
     case INDEX_op_qemu_ld_i32:
     case INDEX_op_qemu_ld_i64:
-        return &r_L;
+        return r_L;
     case INDEX_op_qemu_st_i64:
     case INDEX_op_qemu_st_i32:
-        return &L_L;
+        return L_L;
 
     case INDEX_op_deposit_i32:
     case INDEX_op_deposit_i64:
-        {
-            static const TCGTargetOpDef dep
-                = { .args_ct_str = { "r", "rZ", "r" } };
-            return &dep;
-        }
+        return dep;
+
     case INDEX_op_movcond_i32:
     case INDEX_op_movcond_i64:
-        {
-            static const TCGTargetOpDef movc
-                = { .args_ct_str = { "r", "r", "ri", "r", "0" } };
-            static const TCGTargetOpDef movc_l
-                = { .args_ct_str = { "r", "r", "ri", "rI", "0" } };
-            return (s390_facilities & FACILITY_LOAD_ON_COND2 ? &movc_l : &movc);
-        }
+        return s390_facilities & FACILITY_LOAD_ON_COND2 ? movc_l : movc;
+
     case INDEX_op_div2_i32:
     case INDEX_op_div2_i64:
     case INDEX_op_divu2_i32:
     case INDEX_op_divu2_i64:
-        {
-            static const TCGTargetOpDef div2
-                = { .args_ct_str = { "b", "a", "0", "1", "r" } };
-            return &div2;
-        }
+        return div2;
     case INDEX_op_mulu2_i64:
-        {
-            static const TCGTargetOpDef mul2
-                = { .args_ct_str = { "b", "a", "0", "r" } };
-            return &mul2;
-        }
+        return mul2;
 
     case INDEX_op_add2_i32:
     case INDEX_op_sub2_i32:
-        return (s390_facilities & FACILITY_EXT_IMM ? &a2_ri : &a2_r);
+        return s390_facilities & FACILITY_EXT_IMM ? a2_ri : a2_r;
     case INDEX_op_add2_i64:
     case INDEX_op_sub2_i64:
-        return (s390_facilities & FACILITY_EXT_IMM ? &a2_rA : &a2_r);
+        return s390_facilities & FACILITY_EXT_IMM ? a2_rA : a2_r;
 
     default:
         break;
