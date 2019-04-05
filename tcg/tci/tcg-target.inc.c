@@ -37,158 +37,199 @@
 /* Bitfield n...m (in 32 bit value). */
 #define BITS(n, m) (((0xffffffffU << (31 - n)) >> (31 - n + m)) << m)
 
-/* Macros used in tcg_target_op_defs. */
-#define R       "r"
-#define RI      "ri"
-#if TCG_TARGET_REG_BITS == 32
-# define R64    "r", "r"
-#else
-# define R64    "r"
-#endif
-#if TARGET_LONG_BITS > TCG_TARGET_REG_BITS
-# define L      "L", "L"
-# define S      "S", "S"
-#else
-# define L      "L"
-# define S      "S"
-#endif
+#define ALL_REGS    (BIT(TCG_TARGET_NB_REGS) - 1)
 
-/* TODO: documentation. */
-static const TCGTargetOpDef tcg_target_op_defs[] = {
-    { INDEX_op_exit_tb, { NULL } },
-    { INDEX_op_goto_tb, { NULL } },
-    { INDEX_op_br, { NULL } },
-
-    { INDEX_op_ld8u_i32, { R, R } },
-    { INDEX_op_ld8s_i32, { R, R } },
-    { INDEX_op_ld16u_i32, { R, R } },
-    { INDEX_op_ld16s_i32, { R, R } },
-    { INDEX_op_ld_i32, { R, R } },
-    { INDEX_op_st8_i32, { R, R } },
-    { INDEX_op_st16_i32, { R, R } },
-    { INDEX_op_st_i32, { R, R } },
-
-    { INDEX_op_add_i32, { R, RI, RI } },
-    { INDEX_op_sub_i32, { R, RI, RI } },
-    { INDEX_op_mul_i32, { R, RI, RI } },
-    { INDEX_op_div_i32, { R, R, R } },
-    { INDEX_op_divu_i32, { R, R, R } },
-    { INDEX_op_rem_i32, { R, R, R } },
-    { INDEX_op_remu_i32, { R, R, R } },
-    { INDEX_op_div2_i32, { R, R, "0", "1", R } },
-    { INDEX_op_divu2_i32, { R, R, "0", "1", R } },
-    /* TODO: Does R, RI, RI result in faster code than R, R, RI?
-       If both operands are constants, we can optimize. */
-    { INDEX_op_and_i32, { R, RI, RI } },
-    { INDEX_op_andc_i32, { R, RI, RI } },
-    { INDEX_op_eqv_i32, { R, RI, RI } },
-    { INDEX_op_nand_i32, { R, RI, RI } },
-    { INDEX_op_nor_i32, { R, RI, RI } },
-    { INDEX_op_or_i32, { R, RI, RI } },
-    { INDEX_op_orc_i32, { R, RI, RI } },
-    { INDEX_op_xor_i32, { R, RI, RI } },
-    { INDEX_op_shl_i32, { R, RI, RI } },
-    { INDEX_op_shr_i32, { R, RI, RI } },
-    { INDEX_op_sar_i32, { R, RI, RI } },
-    { INDEX_op_rotl_i32, { R, RI, RI } },
-    { INDEX_op_rotr_i32, { R, RI, RI } },
-    { INDEX_op_deposit_i32, { R, "0", R } },
-
-    { INDEX_op_brcond_i32, { R, RI } },
-
-    { INDEX_op_setcond_i32, { R, R, RI } },
-    { INDEX_op_setcond_i64, { R, R, RI } },
-
-    /* TODO: Support R, R, R, R, RI, RI? Will it be faster? */
-    { INDEX_op_add2_i32, { R, R, R, R, R, R } },
-    { INDEX_op_sub2_i32, { R, R, R, R, R, R } },
-    { INDEX_op_brcond2_i32, { R, R, RI, RI } },
-    { INDEX_op_mulu2_i32, { R, R, R, R } },
-    { INDEX_op_setcond2_i32, { R, R, R, RI, RI } },
-
-    { INDEX_op_not_i32, { R, R } },
-    { INDEX_op_neg_i32, { R, R } },
-
-    { INDEX_op_ld8u_i64, { R, R } },
-    { INDEX_op_ld8s_i64, { R, R } },
-    { INDEX_op_ld16u_i64, { R, R } },
-    { INDEX_op_ld16s_i64, { R, R } },
-    { INDEX_op_ld32u_i64, { R, R } },
-    { INDEX_op_ld32s_i64, { R, R } },
-    { INDEX_op_ld_i64, { R, R } },
-
-    { INDEX_op_st8_i64, { R, R } },
-    { INDEX_op_st16_i64, { R, R } },
-    { INDEX_op_st32_i64, { R, R } },
-    { INDEX_op_st_i64, { R, R } },
-
-    { INDEX_op_add_i64, { R, RI, RI } },
-    { INDEX_op_sub_i64, { R, RI, RI } },
-    { INDEX_op_mul_i64, { R, RI, RI } },
-    { INDEX_op_div_i64, { R, R, R } },
-    { INDEX_op_divu_i64, { R, R, R } },
-    { INDEX_op_rem_i64, { R, R, R } },
-    { INDEX_op_remu_i64, { R, R, R } },
-    { INDEX_op_div2_i64, { R, R, "0", "1", R } },
-    { INDEX_op_divu2_i64, { R, R, "0", "1", R } },
-    { INDEX_op_and_i64, { R, RI, RI } },
-    { INDEX_op_andc_i64, { R, RI, RI } },
-    { INDEX_op_eqv_i64, { R, RI, RI } },
-    { INDEX_op_nand_i64, { R, RI, RI } },
-    { INDEX_op_nor_i64, { R, RI, RI } },
-    { INDEX_op_or_i64, { R, RI, RI } },
-    { INDEX_op_orc_i64, { R, RI, RI } },
-    { INDEX_op_xor_i64, { R, RI, RI } },
-    { INDEX_op_shl_i64, { R, RI, RI } },
-    { INDEX_op_shr_i64, { R, RI, RI } },
-    { INDEX_op_sar_i64, { R, RI, RI } },
-    { INDEX_op_rotl_i64, { R, RI, RI } },
-    { INDEX_op_rotr_i64, { R, RI, RI } },
-    { INDEX_op_deposit_i64, { R, "0", R } },
-    { INDEX_op_brcond_i64, { R, RI } },
-
-    { INDEX_op_ext8s_i64, { R, R } },
-    { INDEX_op_ext16s_i64, { R, R } },
-    { INDEX_op_ext32s_i64, { R, R } },
-    { INDEX_op_ext8u_i64, { R, R } },
-    { INDEX_op_ext16u_i64, { R, R } },
-    { INDEX_op_ext32u_i64, { R, R } },
-    { INDEX_op_ext_i32_i64, { R, R } },
-    { INDEX_op_extu_i32_i64, { R, R } },
-    { INDEX_op_bswap16_i64, { R, R } },
-    { INDEX_op_bswap32_i64, { R, R } },
-    { INDEX_op_bswap64_i64, { R, R } },
-    { INDEX_op_not_i64, { R, R } },
-    { INDEX_op_neg_i64, { R, R } },
-
-    { INDEX_op_qemu_ld_i32, { R, L } },
-    { INDEX_op_qemu_ld_i64, { R64, L } },
-
-    { INDEX_op_qemu_st_i32, { R, S } },
-    { INDEX_op_qemu_st_i64, { R64, S } },
-
-    { INDEX_op_ext8s_i32, { R, R } },
-    { INDEX_op_ext16s_i32, { R, R } },
-    { INDEX_op_ext8u_i32, { R, R } },
-    { INDEX_op_ext16u_i32, { R, R } },
-
-    { INDEX_op_bswap16_i32, { R, R } },
-    { INDEX_op_bswap32_i32, { R, R } },
-
-    { INDEX_op_mb, { } },
-    { -1 },
-};
-
-static const TCGTargetOpDef *tcg_target_op_def(TCGOpcode op)
+static const TCGArgConstraint *target_lookup_constraint(const TCGOp *op)
 {
-    int i, n = ARRAY_SIZE(tcg_target_op_defs);
+    static const TCGArgConstraint r_r[] = {
+        { .regs = ALL_REGS, .sort_index = 0 },
+        { .regs = ALL_REGS, .sort_index = 1 },
+    };
+    static const TCGArgConstraint r_ri[] = {
+        { .regs = ALL_REGS, .sort_index = 0 },
+        { .regs = ALL_REGS, .sort_index = 1, .ct = TCG_CT_CONST },
+    };
+    static const TCGArgConstraint r_r_r[] = {
+        { .regs = ALL_REGS, .sort_index = 0 },
+        { .regs = ALL_REGS, .sort_index = 1 },
+        { .regs = ALL_REGS, .sort_index = 2 },
+    };
+    static const TCGArgConstraint r_r_r_r[] = {
+        { .regs = ALL_REGS, .sort_index = 0 },
+        { .regs = ALL_REGS, .sort_index = 1 },
+        { .regs = ALL_REGS, .sort_index = 2 },
+        { .regs = ALL_REGS, .sort_index = 3 },
+    };
+    static const TCGArgConstraint r_r_r_r_r_r[] = {
+        { .regs = ALL_REGS, .sort_index = 0 },
+        { .regs = ALL_REGS, .sort_index = 1 },
+        { .regs = ALL_REGS, .sort_index = 2 },
+        { .regs = ALL_REGS, .sort_index = 3 },
+        { .regs = ALL_REGS, .sort_index = 4 },
+        { .regs = ALL_REGS, .sort_index = 5 },
+    };
+    static const TCGArgConstraint r_r_ri[] = {
+        { .regs = ALL_REGS, .sort_index = 0 },
+        { .regs = ALL_REGS, .sort_index = 1 },
+        { .regs = ALL_REGS, .sort_index = 2, .ct = TCG_CT_CONST },
+    };
+    static const TCGArgConstraint r_ri_ri[] = {
+        { .regs = ALL_REGS, .sort_index = 0 },
+        { .regs = ALL_REGS, .sort_index = 1, .ct = TCG_CT_CONST },
+        { .regs = ALL_REGS, .sort_index = 2, .ct = TCG_CT_CONST },
+    };
+    static const TCGArgConstraint deposit[] = {
+        { .regs = ALL_REGS, .sort_index = 0, .oalias = 1, .alias_index = 1 },
+        { .regs = ALL_REGS, .sort_index = 1, .ialias = 1, .alias_index = 0 },
+        { .regs = ALL_REGS, .sort_index = 2 },
+    };
+    static const TCGArgConstraint div2[] = {
+        { .regs = ALL_REGS, .sort_index = 0, .oalias = 1, .alias_index = 2 },
+        { .regs = ALL_REGS, .sort_index = 1, .oalias = 1, .alias_index = 3 },
+        { .regs = ALL_REGS, .sort_index = 2, .ialias = 1, .alias_index = 0 },
+        { .regs = ALL_REGS, .sort_index = 3, .ialias = 1, .alias_index = 1 },
+        { .regs = ALL_REGS, .sort_index = 4 },
+    };
+    static const TCGArgConstraint br2[] = {
+        { .regs = ALL_REGS, .sort_index = 0 },
+        { .regs = ALL_REGS, .sort_index = 1 },
+        { .regs = ALL_REGS, .sort_index = 2, .ct = TCG_CT_CONST },
+        { .regs = ALL_REGS, .sort_index = 3, .ct = TCG_CT_CONST },
+    };
+    static const TCGArgConstraint setc2[] = {
+        { .regs = ALL_REGS, .sort_index = 0 },
+        { .regs = ALL_REGS, .sort_index = 1 },
+        { .regs = ALL_REGS, .sort_index = 2 },
+        { .regs = ALL_REGS, .sort_index = 3, .ct = TCG_CT_CONST },
+        { .regs = ALL_REGS, .sort_index = 4, .ct = TCG_CT_CONST },
+    };
 
-    for (i = 0; i < n; ++i) {
-        if (tcg_target_op_defs[i].op == op) {
-            return &tcg_target_op_defs[i];
-        }
+    switch (op->opc) {
+    case INDEX_op_ld8u_i32:
+    case INDEX_op_ld8s_i32:
+    case INDEX_op_ld16u_i32:
+    case INDEX_op_ld16s_i32:
+    case INDEX_op_ld_i32:
+    case INDEX_op_st8_i32:
+    case INDEX_op_st16_i32:
+    case INDEX_op_st_i32:
+    case INDEX_op_ld8u_i64:
+    case INDEX_op_ld8s_i64:
+    case INDEX_op_ld16u_i64:
+    case INDEX_op_ld16s_i64:
+    case INDEX_op_ld32u_i64:
+    case INDEX_op_ld32s_i64:
+    case INDEX_op_ld_i64:
+    case INDEX_op_st8_i64:
+    case INDEX_op_st16_i64:
+    case INDEX_op_st32_i64:
+    case INDEX_op_st_i64:
+    case INDEX_op_not_i32:
+    case INDEX_op_neg_i32:
+    case INDEX_op_not_i64:
+    case INDEX_op_neg_i64:
+    case INDEX_op_ext8s_i32:
+    case INDEX_op_ext16s_i32:
+    case INDEX_op_ext8u_i32:
+    case INDEX_op_ext16u_i32:
+    case INDEX_op_ext8s_i64:
+    case INDEX_op_ext16s_i64:
+    case INDEX_op_ext32s_i64:
+    case INDEX_op_ext8u_i64:
+    case INDEX_op_ext16u_i64:
+    case INDEX_op_ext32u_i64:
+    case INDEX_op_ext_i32_i64:
+    case INDEX_op_extu_i32_i64:
+    case INDEX_op_bswap16_i32:
+    case INDEX_op_bswap32_i32:
+    case INDEX_op_bswap16_i64:
+    case INDEX_op_bswap32_i64:
+    case INDEX_op_bswap64_i64:
+        return r_r;
+
+    case INDEX_op_div_i32:
+    case INDEX_op_divu_i32:
+    case INDEX_op_rem_i32:
+    case INDEX_op_remu_i32:
+    case INDEX_op_div_i64:
+    case INDEX_op_divu_i64:
+    case INDEX_op_rem_i64:
+    case INDEX_op_remu_i64:
+        return r_r_r;
+
+    case INDEX_op_add_i32:
+    case INDEX_op_sub_i32:
+    case INDEX_op_mul_i32:
+    case INDEX_op_and_i32:
+    case INDEX_op_andc_i32:
+    case INDEX_op_eqv_i32:
+    case INDEX_op_nand_i32:
+    case INDEX_op_nor_i32:
+    case INDEX_op_or_i32:
+    case INDEX_op_orc_i32:
+    case INDEX_op_xor_i32:
+    case INDEX_op_shl_i32:
+    case INDEX_op_shr_i32:
+    case INDEX_op_sar_i32:
+    case INDEX_op_rotl_i32:
+    case INDEX_op_rotr_i32:
+    case INDEX_op_add_i64:
+    case INDEX_op_sub_i64:
+    case INDEX_op_mul_i64:
+    case INDEX_op_and_i64:
+    case INDEX_op_andc_i64:
+    case INDEX_op_eqv_i64:
+    case INDEX_op_nand_i64:
+    case INDEX_op_nor_i64:
+    case INDEX_op_or_i64:
+    case INDEX_op_orc_i64:
+    case INDEX_op_xor_i64:
+    case INDEX_op_shl_i64:
+    case INDEX_op_shr_i64:
+    case INDEX_op_sar_i64:
+    case INDEX_op_rotl_i64:
+    case INDEX_op_rotr_i64:
+        return r_ri_ri;
+
+    case INDEX_op_brcond_i32:
+    case INDEX_op_brcond_i64:
+        return r_ri;
+
+    case INDEX_op_setcond_i32:
+    case INDEX_op_setcond_i64:
+        return r_r_ri;
+
+    case INDEX_op_deposit_i32:
+    case INDEX_op_deposit_i64:
+        return deposit;
+
+    case INDEX_op_div2_i32:
+    case INDEX_op_divu2_i32:
+    case INDEX_op_div2_i64:
+    case INDEX_op_divu2_i64:
+        return div2;
+
+    case INDEX_op_add2_i32:
+    case INDEX_op_sub2_i32:
+        return r_r_r_r_r_r;
+    case INDEX_op_mulu2_i32:
+        return r_r_r_r;
+    case INDEX_op_brcond2_i32:
+        return br2;
+    case INDEX_op_setcond2_i32:
+        return setc2;
+
+    case INDEX_op_qemu_ld_i32:
+    case INDEX_op_qemu_st_i32:
+        return TARGET_LONG_BITS > TCG_TARGET_REG_BITS ? r_r_r : r_r;
+    case INDEX_op_qemu_ld_i64:
+    case INDEX_op_qemu_st_i64:
+        return (TCG_TARGET_REG_BITS == 64 ? r_r :
+                TARGET_LONG_BITS > TCG_TARGET_REG_BITS ? r_r_r_r : r_r_r);
+
+    default:
+        return NULL;
     }
-    return NULL;
 }
 
 static const int tcg_target_reg_alloc_order[] = {
@@ -304,22 +345,6 @@ static bool patch_reloc(tcg_insn_unit *code_ptr, int type,
         tcg_patch64(code_ptr, value);
     }
     return true;
-}
-
-/* Parse target specific constraints. */
-static const char *target_parse_constraint(TCGArgConstraint *ct,
-                                           const char *ct_str, TCGType type)
-{
-    switch (*ct_str++) {
-    case 'r':
-    case 'L':                   /* qemu_ld constraint */
-    case 'S':                   /* qemu_st constraint */
-        ct->regs = BIT(TCG_TARGET_NB_REGS) - 1;
-        break;
-    default:
-        return NULL;
-    }
-    return ct_str;
 }
 
 #if defined(CONFIG_DEBUG_TCG_INTERPRETER)
@@ -794,11 +819,11 @@ static void tcg_target_init(TCGContext *s)
     tcg_debug_assert(tcg_op_defs_max <= UINT8_MAX);
 
     /* Registers available for 32 bit operations. */
-    tcg_target_available_regs[TCG_TYPE_I32] = BIT(TCG_TARGET_NB_REGS) - 1;
+    tcg_target_available_regs[TCG_TYPE_I32] = ALL_REGS;
     /* Registers available for 64 bit operations. */
-    tcg_target_available_regs[TCG_TYPE_I64] = BIT(TCG_TARGET_NB_REGS) - 1;
+    tcg_target_available_regs[TCG_TYPE_I64] = ALL_REGS;
     /* TODO: Which registers should be set here? */
-    tcg_target_call_clobber_regs = BIT(TCG_TARGET_NB_REGS) - 1;
+    tcg_target_call_clobber_regs = ALL_REGS;
 
     s->reserved_regs = 0;
     tcg_regset_set_reg(s->reserved_regs, TCG_REG_CALL_STACK);
