@@ -2122,23 +2122,48 @@ static void validate_constraints(TCGContext *s)
             assert(ct[i].regs != 0);
         }
 
-        /* Alias links must match, forward and backward.  */
-        for (i = 0; i < nb_oargs; ++i) {
+        /*
+         * Alias links must match, forward and backward.
+         * Sorted argument lists are separate between inputs and outputs.
+         * Register pairs must sort the pair after the original.
+         * Outputs cannot match both alias and paired; inputs can, as the
+         * input alias defines the register for the output alias.
+         */
+        for (i = 0, sorted = 0; i < nb_oargs; ++i) {
             int aidx = ct[i].alias_index;
+            int sidx = ct[i].sort_index;
+            int pidx = ct[i].pair_index;
 
             assert(!ct[i].ialias);
             if (ct[i].oalias) {
                 assert(aidx >= nb_oargs && aidx < nb_args);
                 assert(ct[aidx].ialias);
                 assert(ct[aidx].alias_index == i);
+                assert(!ct[i].paired);
             } else {
                 assert(aidx == 0);
             }
+
+            if (ct[i].paired) {
+                assert(pidx < nb_oargs);
+                assert(sorted & (1 << pidx));
+            } else {
+                assert(pidx == 0);
+            }
+
+            assert(sidx < nb_args);
+            assert((sorted & (1 << sidx)) == 0);
+            sorted |= 1 << sidx;
         }
-        for (i = nb_oargs; i < nb_args; ++i) {
+        assert(sorted == (1 << nb_oargs) - 1);
+
+        for (i = nb_oargs, sorted = 0; i < nb_args; ++i) {
             int aidx = ct[i].alias_index;
+            int sidx = ct[i].sort_index;
+            int pidx = ct[i].pair_index;
 
             assert(!ct[i].oalias);
+            assert(!ct[i].newreg);
             if (ct[i].ialias) {
                 assert(aidx < nb_oargs);
                 assert(ct[aidx].oalias);
@@ -2146,19 +2171,14 @@ static void validate_constraints(TCGContext *s)
             } else {
                 assert(aidx == 0);
             }
-        }
 
-        /* Sorted argument lists are separate between inputs and outputs.  */
-        for (i = sorted = 0; i < nb_oargs; ++i) {
-            int sidx = ct[i].sort_index;
-            assert(sidx < nb_args);
-            assert((sorted & (1 << sidx)) == 0);
-            sorted |= 1 << sidx;
+            if (ct[i].paired) {
+                assert(pidx < nb_args);
+                assert(sorted & (1 << pidx));
+            } else {
+                assert(pidx == 0);
+            }
 
-        }
-        assert(sorted == (1 << nb_oargs) - 1);
-        for (i = nb_oargs, sorted = 0; i < nb_args; ++i) {
-            int sidx = ct[i].sort_index;
             assert(sidx < nb_args);
             assert((sorted & (1 << sidx)) == 0);
             sorted |= 1 << sidx;
@@ -3349,7 +3369,7 @@ static void tcg_reg_alloc_op(TCGContext *s, const TCGOp *op)
 
     /* satisfy input constraints */ 
     for (k = 0; k < nb_iargs; k++) {
-        TCGRegSet i_preferred_regs, o_preferred_regs;
+        TCGRegSet i_preferred_regs, o_preferred_regs, arg_regs;
 
         i = args_ct[nb_oargs + k].sort_index;
         arg = op->args[i];
@@ -3365,6 +3385,8 @@ static void tcg_reg_alloc_op(TCGContext *s, const TCGOp *op)
         }
 
         i_preferred_regs = o_preferred_regs = 0;
+        arg_regs = arg_ct->regs;
+
         if (arg_ct->ialias) {
             o_preferred_regs = op->output_pref[arg_ct->alias_index];
             if (ts->fixed_reg) {
@@ -3395,12 +3417,25 @@ static void tcg_reg_alloc_op(TCGContext *s, const TCGOp *op)
                 }
                 i_preferred_regs = o_preferred_regs;
             }
+        } else if (arg_ct->paired) {
+            /*
+             * We asserted in validate_constraints that the argument
+             * with which we are pairing has already been processed
+             * via sort order.
+             */
+            reg = new_args[arg_ct->pair_index] + arg_ct->paired;
+            tcg_debug_assert(!const_args[arg_ct->pair_index]);
+            tcg_debug_assert(reg >= 0 && reg < TCG_TARGET_NB_REGS);
+            tcg_debug_assert(!tcg_regset_test_reg(i_allocated_regs, reg));
+            tcg_debug_assert(tcg_regset_test_reg(arg_ct->regs, reg));
+            arg_regs = 0;
+            tcg_regset_set_reg(arg_regs, reg);
         }
 
-        temp_load(s, ts, arg_ct->regs, i_allocated_regs, i_preferred_regs);
+        temp_load(s, ts, arg_regs, i_allocated_regs, i_preferred_regs);
         reg = ts->reg;
 
-        if (tcg_regset_test_reg(arg_ct->regs, reg)) {
+        if (tcg_regset_test_reg(arg_regs, reg)) {
             /* nothing to do : the constraint is satisfied */
         } else {
         allocate_in_reg:
@@ -3408,7 +3443,7 @@ static void tcg_reg_alloc_op(TCGContext *s, const TCGOp *op)
                and move the temporary register into it */
             temp_load(s, ts, tcg_target_available_regs[ts->type],
                       i_allocated_regs, 0);
-            reg = tcg_reg_alloc(s, arg_ct->regs, i_allocated_regs,
+            reg = tcg_reg_alloc(s, arg_regs, i_allocated_regs,
                                 o_preferred_regs, ts->indirect_base);
             tcg_out_mov(s, ts->type, reg, ts->reg);
         }
@@ -3453,6 +3488,12 @@ static void tcg_reg_alloc_op(TCGContext *s, const TCGOp *op)
                 reg = tcg_reg_alloc(s, arg_ct->regs,
                                     i_allocated_regs | o_allocated_regs,
                                     op->output_pref[k], ts->indirect_base);
+            } else if (arg_ct->paired) {
+                reg = new_args[arg_ct->pair_index] + arg_ct->paired;
+                tcg_debug_assert(!const_args[arg_ct->pair_index]);
+                tcg_debug_assert(reg >= 0 && reg < TCG_TARGET_NB_REGS);
+                tcg_debug_assert(!tcg_regset_test_reg(i_allocated_regs, reg));
+                tcg_debug_assert(tcg_regset_test_reg(arg_ct->regs, reg));
             } else {
                 /* if fixed register, we try to use it */
                 reg = ts->reg;

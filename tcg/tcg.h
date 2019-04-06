@@ -1026,9 +1026,11 @@ typedef struct TCGArgConstraint {
     unsigned ct : 16;
     unsigned alias_index : 4;
     unsigned sort_index : 4;
+    unsigned pair_index : 3;
     unsigned oalias : 1;
     unsigned ialias : 1;
     unsigned newreg : 1;
+    signed   paired : 2;
     TCGRegSet regs;
 } TCGArgConstraint;
 
