@@ -2271,9 +2271,10 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
 }
 
 #define GENERAL_REGS    0xffff
+/* Odd registers, eliminating those whose even register pair is reserved.  */
+#define ODD_REGS        0x0aa8
+#define EVEN_REGS       0x0554
 #define QADDR_REGS      (GENERAL_REGS & ~(3 << TCG_REG_R2))  /* w/o R2,R3,R4 */
-#define R2_REGS         (1 << TCG_REG_R2)
-#define R3_REGS         (1 << TCG_REG_R3)
 
 static const TCGArgConstraint *target_lookup_constraint(const TCGOp *op)
 {
@@ -2382,16 +2383,17 @@ static const TCGArgConstraint *target_lookup_constraint(const TCGOp *op)
           .ialias = 1, .alias_index = 0 },
     };
     static const TCGArgConstraint div2[] = {
-        { .regs = R3_REGS, .sort_index = 0, .oalias = 1, .alias_index = 2 },
-        { .regs = R2_REGS, .sort_index = 1, .oalias = 1, .alias_index = 3 },
-        { .regs = R3_REGS, .sort_index = 2, .ialias = 1, .alias_index = 0 },
-        { .regs = R2_REGS, .sort_index = 3, .ialias = 1, .alias_index = 1 },
+        { .regs = ODD_REGS, .sort_index = 0, .oalias = 1, .alias_index = 2 },
+        { .regs = EVEN_REGS, .sort_index = 1, .oalias = 1, .alias_index = 3 },
+        { .regs = ODD_REGS, .sort_index = 2, .ialias = 1, .alias_index = 0 },
+        { .regs = EVEN_REGS, .sort_index = 3,
+          .ialias = 1, .alias_index = 1, .paired = -1, .pair_index = 2 },
         { .regs = GENERAL_REGS, .sort_index = 4 },
     };
     static const TCGArgConstraint mul2[] = {
-        { .regs = R3_REGS, .sort_index = 0, .oalias = 1, .alias_index = 2 },
-        { .regs = R2_REGS, .sort_index = 1 },
-        { .regs = R3_REGS, .sort_index = 2, .ialias = 1, .alias_index = 0 },
+        { .regs = ODD_REGS, .sort_index = 0, .oalias = 1, .alias_index = 2 },
+        { .regs = EVEN_REGS, .sort_index = 1, .paired = -1, .pair_index = 0 },
+        { .regs = ODD_REGS, .sort_index = 2, .ialias = 1, .alias_index = 0 },
         { .regs = GENERAL_REGS, .sort_index = 3 },
     };
 
