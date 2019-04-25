@@ -1207,10 +1207,10 @@ static inline uint64_t handle_bswap(uint64_t val, int size, bool big_endian)
  * is disassembled. It shouldn't be called directly by guest code.
  */
 
-static tcg_target_ulong load_helper(CPUArchState *env, target_ulong addr,
-                                    TCGMemOpIdx oi, uintptr_t retaddr,
-                                    size_t size, bool big_endian,
-                                    bool code_read)
+static uint64_t load_helper(CPUArchState *env, target_ulong addr,
+                            TCGMemOpIdx oi, uintptr_t retaddr,
+                            size_t size, bool big_endian,
+                            bool code_read)
 {
     uintptr_t mmu_idx = get_mmuidx(oi);
     uintptr_t index = tlb_index(env, mmu_idx, addr);
@@ -1219,9 +1219,8 @@ static tcg_target_ulong load_helper(CPUArchState *env, target_ulong addr,
     const size_t tlb_off = code_read ?
         offsetof(CPUTLBEntry, addr_code) : offsetof(CPUTLBEntry, addr_read);
     unsigned a_bits = get_alignment_bits(get_memop(oi));
-    uintptr_t haddr;
-    tcg_target_ulong res;
-    const tcg_target_ulong size_mask = MAKE_64BIT_MASK(0, size * 8);
+    void *haddr;
+    uint64_t res;
 
     /* Handle CPU specific unaligned behaviour */
     if (addr & ((1 << a_bits) - 1)) {
@@ -1274,46 +1273,43 @@ static tcg_target_ulong load_helper(CPUArchState *env, target_ulong addr,
 
         if (big_endian) {
             /* Big-endian combine.  */
-            r2 &= size_mask;
-            res = ((r1 << shift) | (r2 >> ((size * 8) - shift))) & size_mask;
+            res = (r1 << shift) | (r2 >> ((size * 8) - shift));
         } else {
             /* Little-endian combine.  */
-            r1 &= size_mask;
-            res = ((r1 >> shift) | (r2 << ((size * 8) - shift))) & size_mask;
+            res = (r1 >> shift) | (r2 << ((size * 8) - shift));
         }
-        return res;
+        return res & MAKE_64BIT_MASK(0, size * 8);
     }
 
-    haddr = addr + entry->addend;
+    haddr = (void *)((uintptr_t)addr + entry->addend);
 
     switch (size) {
     case 1:
-        res = ldub_p((uint8_t *)haddr);
+        res = ldub_p(haddr);
         break;
     case 2:
         if (big_endian) {
-            res = lduw_be_p((uint8_t *)haddr);
+            res = lduw_be_p(haddr);
         } else {
-            res = lduw_le_p((uint8_t *)haddr);
+            res = lduw_le_p(haddr);
         }
         break;
     case 4:
         if (big_endian) {
-            res = ldl_be_p((uint8_t *)haddr);
+            res = (uint32_t)ldl_be_p(haddr);
         } else {
-            res = ldl_le_p((uint8_t *)haddr);
+            res = (uint32_t)ldl_le_p(haddr);
         }
         break;
     case 8:
         if (big_endian) {
-            res = ldq_be_p((uint8_t *)haddr);
+            res = ldq_be_p(haddr);
         } else {
-            res = ldq_le_p((uint8_t *)haddr);
+            res = ldq_le_p(haddr);
         }
         break;
     default:
         g_assert_not_reached();
-        break;
     }
 
     return res;
@@ -1384,37 +1380,32 @@ helper_be_ldq_mmu(CPUArchState *env, target_ulong addr, TCGMemOpIdx oi,
  */
 
 
-tcg_target_ulong __attribute__((flatten))
-helper_ret_ldsb_mmu(CPUArchState *env, target_ulong addr, TCGMemOpIdx oi,
-                    uintptr_t retaddr)
+tcg_target_ulong helper_ret_ldsb_mmu(CPUArchState *env, target_ulong addr,
+                                     TCGMemOpIdx oi, uintptr_t retaddr)
 {
     return (int8_t)helper_ret_ldub_mmu(env, addr, oi, retaddr);
 }
 
-tcg_target_ulong __attribute__((flatten))
-helper_le_ldsw_mmu(CPUArchState *env, target_ulong addr, TCGMemOpIdx oi,
-                   uintptr_t retaddr)
+tcg_target_ulong helper_le_ldsw_mmu(CPUArchState *env, target_ulong addr,
+                                    TCGMemOpIdx oi, uintptr_t retaddr)
 {
     return (int16_t)helper_le_lduw_mmu(env, addr, oi, retaddr);
 }
 
-tcg_target_ulong __attribute__((flatten))
-helper_be_ldsw_mmu(CPUArchState *env, target_ulong addr, TCGMemOpIdx oi,
-                   uintptr_t retaddr)
+tcg_target_ulong helper_be_ldsw_mmu(CPUArchState *env, target_ulong addr,
+                                    TCGMemOpIdx oi, uintptr_t retaddr)
 {
     return (int16_t)helper_be_lduw_mmu(env, addr, oi, retaddr);
 }
 
-tcg_target_ulong
-helper_le_ldsl_mmu(CPUArchState *env, target_ulong addr, TCGMemOpIdx oi,
-                   uintptr_t retaddr)
+tcg_target_ulong helper_le_ldsl_mmu(CPUArchState *env, target_ulong addr,
+                                    TCGMemOpIdx oi, uintptr_t retaddr)
 {
     return (int32_t)helper_le_ldul_mmu(env, addr, oi, retaddr);
 }
 
-tcg_target_ulong
-helper_be_ldsl_mmu(CPUArchState *env, target_ulong addr, TCGMemOpIdx oi,
-                   uintptr_t retaddr)
+tcg_target_ulong helper_be_ldsl_mmu(CPUArchState *env, target_ulong addr,
+                                    TCGMemOpIdx oi, uintptr_t retaddr)
 {
     return (int32_t)helper_be_ldul_mmu(env, addr, oi, retaddr);
 }
@@ -1433,7 +1424,7 @@ static void store_helper(CPUArchState *env, target_ulong addr, uint64_t val,
     target_ulong tlb_addr = tlb_addr_write(entry);
     const size_t tlb_off = offsetof(CPUTLBEntry, addr_write);
     unsigned a_bits = get_alignment_bits(get_memop(oi));
-    uintptr_t haddr;
+    void *haddr;
 
     /* Handle CPU specific unaligned behaviour */
     if (addr & ((1 << a_bits) - 1)) {
@@ -1511,31 +1502,31 @@ static void store_helper(CPUArchState *env, target_ulong addr, uint64_t val,
         return;
     }
 
-    haddr = addr + entry->addend;
+    haddr = (void *)((uintptr_t)addr + entry->addend);
 
     switch (size) {
     case 1:
-        stb_p((uint8_t *)haddr, val);
+        stb_p(haddr, val);
         break;
     case 2:
         if (big_endian) {
-            stw_be_p((uint8_t *)haddr, val);
+            stw_be_p(haddr, val);
         } else {
-            stw_le_p((uint8_t *)haddr, val);
+            stw_le_p(haddr, val);
         }
         break;
     case 4:
         if (big_endian) {
-            stl_be_p((uint8_t *)haddr, val);
+            stl_be_p(haddr, val);
         } else {
-            stl_le_p((uint8_t *)haddr, val);
+            stl_le_p(haddr, val);
         }
         break;
     case 8:
         if (big_endian) {
-            stq_be_p((uint8_t *)haddr, val);
+            stq_be_p(haddr, val);
         } else {
-            stq_le_p((uint8_t *)haddr, val);
+            stq_le_p(haddr, val);
         }
         break;
     default:
