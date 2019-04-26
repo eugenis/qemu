@@ -1160,6 +1160,32 @@ static inline uint64_t handle_bswap(uint64_t val, int size, bool big_endian)
 typedef uint64_t FullLoadHelper(CPUArchState *env, target_ulong addr,
                                 TCGMemOpIdx oi, uintptr_t retaddr);
 
+static uint64_t
+unaligned_load_helper(CPUArchState *env, target_ulong addr, TCGMemOpIdx oi,
+                      uintptr_t retaddr, bool big_endian, size_t size,
+                      FullLoadHelper *full_load)
+{
+    target_ulong addr1, addr2;
+    tcg_target_ulong r1, r2;
+    unsigned shift;
+    uint64_t res;
+
+    addr1 = addr & ~(size - 1);
+    addr2 = addr1 + size;
+    r1 = full_load(env, addr1, oi, retaddr);
+    r2 = full_load(env, addr2, oi, retaddr);
+    shift = (addr & (size - 1)) * 8;
+
+    if (big_endian) {
+        /* Big-endian combine.  */
+        res = (r1 << shift) | (r2 >> ((size * 8) - shift));
+    } else {
+        /* Little-endian combine.  */
+        res = (r1 >> shift) | (r2 << ((size * 8) - shift));
+    }
+    return res & MAKE_64BIT_MASK(0, size * 8);
+}
+
 static inline uint64_t __attribute__((always_inline))
 load_helper(CPUArchState *env, target_ulong addr, TCGMemOpIdx oi,
             uintptr_t retaddr, size_t size, bool big_endian, bool code_read,
@@ -1198,7 +1224,8 @@ load_helper(CPUArchState *env, target_ulong addr, TCGMemOpIdx oi,
     /* Handle an IO access.  */
     if (unlikely(tlb_addr & ~TARGET_PAGE_MASK)) {
         if ((addr & (size - 1)) != 0) {
-            goto do_unaligned_access;
+            return unaligned_load_helper(env, addr, oi, retaddr, size,
+                                         big_endian, full_load);
         }
 
         if (tlb_addr & TLB_RECHECK) {
@@ -1230,24 +1257,8 @@ load_helper(CPUArchState *env, target_ulong addr, TCGMemOpIdx oi,
     if (size > 1
         && unlikely((addr & ~TARGET_PAGE_MASK) + size - 1
                     >= TARGET_PAGE_SIZE)) {
-        target_ulong addr1, addr2;
-        tcg_target_ulong r1, r2;
-        unsigned shift;
-    do_unaligned_access:
-        addr1 = addr & ~(size - 1);
-        addr2 = addr1 + size;
-        r1 = full_load(env, addr1, oi, retaddr);
-        r2 = full_load(env, addr2, oi, retaddr);
-        shift = (addr & (size - 1)) * 8;
-
-        if (big_endian) {
-            /* Big-endian combine.  */
-            res = (r1 << shift) | (r2 >> ((size * 8) - shift));
-        } else {
-            /* Little-endian combine.  */
-            res = (r1 >> shift) | (r2 << ((size * 8) - shift));
-        }
-        return res & MAKE_64BIT_MASK(0, size * 8);
+        return unaligned_load_helper(env, addr, oi, retaddr, size,
+                                     big_endian, full_load);
     }
 
  do_aligned_access:
@@ -1413,6 +1424,51 @@ tcg_target_ulong helper_be_ldsl_mmu(CPUArchState *env, target_ulong addr,
  * Store Helpers
  */
 
+static void unaligned_store_helper(CPUArchState *env, target_ulong addr,
+                                   uint64_t val, TCGMemOpIdx oi,
+                                   uintptr_t retaddr, size_t size,
+                                   uintptr_t mmu_idx, bool big_endian)
+{
+    size_t i;
+    uintptr_t index2;
+    CPUTLBEntry *entry2;
+    target_ulong page2, tlb_addr2;
+
+    /*
+     * Ensure the second page is in the TLB.  Note that the first page
+     * is already guaranteed to be filled, and that the second page
+     * cannot evict the first.
+     */
+    page2 = (addr + size) & TARGET_PAGE_MASK;
+    index2 = tlb_index(env, mmu_idx, page2);
+    entry2 = tlb_entry(env, mmu_idx, page2);
+    tlb_addr2 = tlb_addr_write(entry2);
+    if (!tlb_hit_page(tlb_addr2, page2)
+        && !victim_tlb_hit(env, mmu_idx, index2,
+                           offsetof(CPUTLBEntry, addr_write),
+                           page2 & TARGET_PAGE_MASK)) {
+        tlb_fill(ENV_GET_CPU(env), page2, size, MMU_DATA_STORE,
+                 mmu_idx, retaddr);
+    }
+
+    /*
+     * XXX: not efficient, but simple.
+     * This loop must go in the forward direction to avoid issues
+     * with self-modifying code in Windows 64-bit.
+     */
+    for (i = 0; i < size; ++i) {
+        uint8_t val8;
+        if (big_endian) {
+            /* Big-endian extract.  */
+            val8 = val >> (((size - 1) * 8) - (i * 8));
+        } else {
+            /* Little-endian extract.  */
+            val8 = val >> (i * 8);
+        }
+        helper_ret_stb_mmu(env, addr + i, val8, oi, retaddr);
+    }
+}
+
 static inline void __attribute__((always_inline))
 store_helper(CPUArchState *env, target_ulong addr, uint64_t val,
              TCGMemOpIdx oi, uintptr_t retaddr, size_t size, bool big_endian)
@@ -1446,7 +1502,9 @@ store_helper(CPUArchState *env, target_ulong addr, uint64_t val,
     /* Handle an IO access.  */
     if (unlikely(tlb_addr & ~TARGET_PAGE_MASK)) {
         if ((addr & (size - 1)) != 0) {
-            goto do_unaligned_access;
+            unaligned_store_helper(env, addr, val, oi, retaddr,
+                                   size, mmu_idx, big_endian);
+            return;
         }
 
         if (tlb_addr & TLB_RECHECK) {
@@ -1479,43 +1537,8 @@ store_helper(CPUArchState *env, target_ulong addr, uint64_t val,
     if (size > 1
         && unlikely((addr & ~TARGET_PAGE_MASK) + size - 1
                      >= TARGET_PAGE_SIZE)) {
-        int i;
-        uintptr_t index2;
-        CPUTLBEntry *entry2;
-        target_ulong page2, tlb_addr2;
-    do_unaligned_access:
-        /*
-         * Ensure the second page is in the TLB.  Note that the first page
-         * is already guaranteed to be filled, and that the second page
-         * cannot evict the first.
-         */
-        page2 = (addr + size) & TARGET_PAGE_MASK;
-        index2 = tlb_index(env, mmu_idx, page2);
-        entry2 = tlb_entry(env, mmu_idx, page2);
-        tlb_addr2 = tlb_addr_write(entry2);
-        if (!tlb_hit_page(tlb_addr2, page2)
-            && !victim_tlb_hit(env, mmu_idx, index2, tlb_off,
-                               page2 & TARGET_PAGE_MASK)) {
-            tlb_fill(ENV_GET_CPU(env), page2, size, MMU_DATA_STORE,
-                     mmu_idx, retaddr);
-        }
-
-        /*
-         * XXX: not efficient, but simple.
-         * This loop must go in the forward direction to avoid issues
-         * with self-modifying code in Windows 64-bit.
-         */
-        for (i = 0; i < size; ++i) {
-            uint8_t val8;
-            if (big_endian) {
-                /* Big-endian extract.  */
-                val8 = val >> (((size - 1) * 8) - (i * 8));
-            } else {
-                /* Little-endian extract.  */
-                val8 = val >> (i * 8);
-            }
-            helper_ret_stb_mmu(env, addr + i, val8, oi, retaddr);
-        }
+        unaligned_store_helper(env, addr, val, oi, retaddr,
+                               size, mmu_idx, big_endian);
         return;
     }
 
