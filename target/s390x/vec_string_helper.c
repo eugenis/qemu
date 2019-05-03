@@ -95,3 +95,62 @@ void HELPER(gvec_vfae_cc##BITS)(void *v1, const void *v2, const void *v3,      \
 DEF_VFAE_CC_HELPER(8)
 DEF_VFAE_CC_HELPER(16)
 DEF_VFAE_CC_HELPER(32)
+
+#define DEF_VFEE(BITS)                                                         \
+static int vfee##BITS(void *v1, const void *v2, const void *v3, uint8_t m5)    \
+{                                                                              \
+    const bool zs = extract32(m5, 1, 1);                                       \
+    S390Vector tmp = {};                                                       \
+    int first_byte = 16;                                                       \
+    int cc = 3; /* no match */                                                 \
+    int i;                                                                     \
+                                                                               \
+    for (i = 0; i < (128 / BITS); i++) {                                       \
+        const uint##BITS##_t data1 = s390_vec_read_element##BITS(v2, i);       \
+        const uint##BITS##_t data2 = s390_vec_read_element##BITS(v3, i);       \
+                                                                               \
+        if (zs && !data1) {                                                    \
+            if (cc == 3) {                                                     \
+                first_byte = i * (BITS / 8);                                   \
+                cc = 0; /* match for zero */                                   \
+            } else {                                                           \
+                cc = 2; /* matching elements before match for zero */          \
+            }                                                                  \
+            break;                                                             \
+        }                                                                      \
+                                                                               \
+        if (cc == 3 && data1 == data2) {                                       \
+            first_byte = i * (BITS / 8);                                       \
+            cc = 1; /* matching elements, no match for zero */                 \
+            if (!zs) {                                                         \
+                break;                                                         \
+            }                                                                  \
+        }                                                                      \
+    }                                                                          \
+    s390_vec_write_element8(&tmp, 7, first_byte);                              \
+    *(S390Vector *)v1 = tmp;                                                   \
+    return cc;                                                                 \
+}
+DEF_VFEE(8)
+DEF_VFEE(16)
+DEF_VFEE(32)
+
+#define DEF_VFEE_HELPER(BITS)                                                  \
+void HELPER(gvec_vfee##BITS)(void *v1, const void *v2, const void *v3,         \
+                             uint32_t desc)                                    \
+{                                                                              \
+    vfee##BITS(v1, v2, v3, simd_data(desc));                                   \
+}
+DEF_VFEE_HELPER(8)
+DEF_VFEE_HELPER(16)
+DEF_VFEE_HELPER(32)
+
+#define DEF_VFEE_CC_HELPER(BITS)                                               \
+void HELPER(gvec_vfee_cc##BITS)(void *v1, const void *v2, const void *v3,      \
+                                CPUS390XState *env, uint32_t desc)             \
+{                                                                              \
+    env->cc_op = vfee##BITS(v1, v2, v3, simd_data(desc));                      \
+}
+DEF_VFEE_CC_HELPER(8)
+DEF_VFEE_CC_HELPER(16)
+DEF_VFEE_CC_HELPER(32)

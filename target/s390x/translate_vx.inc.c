@@ -2384,3 +2384,34 @@ static DisasJumpType op_vfae(DisasContext *s, DisasOps *o)
     }
     return DISAS_NEXT;
 }
+
+static DisasJumpType op_vfee(DisasContext *s, DisasOps *o)
+{
+    const uint8_t es = get_field(s->fields, m4);
+    const uint8_t m5 = get_field(s->fields, m5);
+    static gen_helper_gvec_3_ptr * const cc[3] = {
+        gen_helper_gvec_vfee_cc8,
+        gen_helper_gvec_vfee_cc16,
+        gen_helper_gvec_vfee_cc32,
+    };
+    static gen_helper_gvec_3 * const nocc[3] = {
+        gen_helper_gvec_vfee8,
+        gen_helper_gvec_vfee16,
+        gen_helper_gvec_vfee32,
+    };
+
+    if (es > ES_32 || m5 & ~0x3) {
+        gen_program_exception(s, PGM_SPECIFICATION);
+        return DISAS_NORETURN;
+    }
+
+    if (m5 & 1) {
+        gen_gvec_3_ptr(get_field(s->fields, v1), get_field(s->fields, v2),
+                       get_field(s->fields, v3), cpu_env, m5, cc[es]);
+        set_cc_static(s);
+    } else {
+        gen_gvec_3_ool(get_field(s->fields, v1), get_field(s->fields, v2),
+                       get_field(s->fields, v3), m5, nocc[es]);
+    }
+    return DISAS_NEXT;
+}
