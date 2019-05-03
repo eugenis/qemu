@@ -154,3 +154,56 @@ void HELPER(gvec_vfee_cc##BITS)(void *v1, const void *v2, const void *v3,      \
 DEF_VFEE_CC_HELPER(8)
 DEF_VFEE_CC_HELPER(16)
 DEF_VFEE_CC_HELPER(32)
+
+#define DEF_VFENE(BITS)                                                        \
+static int vfene##BITS(void *v1, const void *v2, const void *v3, uint8_t m5)   \
+{                                                                              \
+    const bool zs = extract32(m5, 1, 1);                                       \
+    S390Vector tmp = {};                                                       \
+    int first_byte = 16;                                                       \
+    int cc = 3; /* no match */                                                 \
+    int i;                                                                     \
+                                                                               \
+    for (i = 0; i < (128 / BITS); i++) {                                       \
+        const uint##BITS##_t data1 = s390_vec_read_element##BITS(v2, i);       \
+        const uint##BITS##_t data2 = s390_vec_read_element##BITS(v3, i);       \
+                                                                               \
+        if (data1 != data2) {                                                  \
+            first_byte = i * (BITS / 8);                                       \
+            cc = data1 < data2 ? 1 : 2; /* inequality found */                 \
+            break;                                                             \
+        }                                                                      \
+                                                                               \
+        if (zs && !data1) {                                                    \
+            first_byte = i * (BITS / 8);                                       \
+            cc = 0; /* match for zero */                                       \
+            break;                                                             \
+        }                                                                      \
+    }                                                                          \
+    s390_vec_write_element8(&tmp, 7, first_byte);                              \
+    *(S390Vector *)v1 = tmp;                                                   \
+    return cc;                                                                 \
+}
+DEF_VFENE(8)
+DEF_VFENE(16)
+DEF_VFENE(32)
+
+#define DEF_VFENE_HELPER(BITS)                                                 \
+void HELPER(gvec_vfene##BITS)(void *v1, const void *v2, const void *v3,        \
+                              uint32_t desc)                                   \
+{                                                                              \
+    vfene##BITS(v1, v2, v3, simd_data(desc));                                  \
+}
+DEF_VFENE_HELPER(8)
+DEF_VFENE_HELPER(16)
+DEF_VFENE_HELPER(32)
+
+#define DEF_VFENE_CC_HELPER(BITS)                                              \
+void HELPER(gvec_vfene_cc##BITS)(void *v1, const void *v2, const void *v3,     \
+                                CPUS390XState *env, uint32_t desc)             \
+{                                                                              \
+    env->cc_op = vfene##BITS(v1, v2, v3, simd_data(desc));                     \
+}
+DEF_VFENE_CC_HELPER(8)
+DEF_VFENE_CC_HELPER(16)
+DEF_VFENE_CC_HELPER(32)
