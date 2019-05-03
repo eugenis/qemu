@@ -207,3 +207,44 @@ void HELPER(gvec_vfene_cc##BITS)(void *v1, const void *v2, const void *v3,     \
 DEF_VFENE_CC_HELPER(8)
 DEF_VFENE_CC_HELPER(16)
 DEF_VFENE_CC_HELPER(32)
+
+#define DEF_VISTR(BITS)                                                        \
+static int vistr##BITS(void *v1, const void *v2)                               \
+{                                                                              \
+    S390Vector tmp = {};                                                       \
+    int i, cc = 3;                                                             \
+                                                                               \
+    for (i = 0; i < (128 / BITS); i++) {                                       \
+        const uint##BITS##_t data = s390_vec_read_element##BITS(v2, i);        \
+                                                                               \
+        if (!data) {                                                           \
+            cc = 0;                                                            \
+            break;                                                             \
+        }                                                                      \
+        s390_vec_write_element##BITS(&tmp, i, data);                           \
+    }                                                                          \
+    *(S390Vector *)v1 = tmp;                                                   \
+    return cc;                                                                 \
+}
+DEF_VISTR(8)
+DEF_VISTR(16)
+DEF_VISTR(32)
+
+#define DEF_VISTR_HELPER(BITS)                                                 \
+void HELPER(gvec_vistr##BITS)(void *v1, const void *v2, uint32_t desc)         \
+{                                                                              \
+    vistr##BITS(v1, v2);                                                       \
+}
+DEF_VISTR_HELPER(8)
+DEF_VISTR_HELPER(16)
+DEF_VISTR_HELPER(32)
+
+#define DEF_VISTR_CC_HELPER(BITS)                                              \
+void HELPER(gvec_vistr_cc##BITS)(void *v1, const void *v2,                     \
+                                 CPUS390XState *env, uint32_t desc)            \
+{                                                                              \
+    env->cc_op = vistr##BITS(v1, v2);                                          \
+}
+DEF_VISTR_CC_HELPER(8)
+DEF_VISTR_CC_HELPER(16)
+DEF_VISTR_CC_HELPER(32)

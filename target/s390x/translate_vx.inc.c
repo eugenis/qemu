@@ -188,6 +188,9 @@ static void get_vec_element_ptr_i64(TCGv_ptr ptr, uint8_t reg, TCGv_i64 enr,
 #define gen_gvec_2s(v1, v2, c, gen) \
     tcg_gen_gvec_2s(vec_full_reg_offset(v1), vec_full_reg_offset(v2), \
                     16, 16, c, gen)
+#define gen_gvec_2_ool(v1, v2, data, fn) \
+    tcg_gen_gvec_2_ool(vec_full_reg_offset(v1), vec_full_reg_offset(v2), \
+                       16, 16, data, fn)
 #define gen_gvec_2i_ool(v1, v2, c, data, fn) \
     tcg_gen_gvec_2i_ool(vec_full_reg_offset(v1), vec_full_reg_offset(v2), \
                         c, 16, 16, data, fn)
@@ -2443,6 +2446,37 @@ static DisasJumpType op_vfene(DisasContext *s, DisasOps *o)
     } else {
         gen_gvec_3_ool(get_field(s->fields, v1), get_field(s->fields, v2),
                        get_field(s->fields, v3), m5, nocc[es]);
+    }
+    return DISAS_NEXT;
+}
+
+static DisasJumpType op_vistr(DisasContext *s, DisasOps *o)
+{
+    const uint8_t es = get_field(s->fields, m4);
+    const uint8_t m5 = get_field(s->fields, m5);
+    static gen_helper_gvec_2_ptr * const cc[3] = {
+        gen_helper_gvec_vistr_cc8,
+        gen_helper_gvec_vistr_cc16,
+        gen_helper_gvec_vistr_cc32,
+    };
+    static gen_helper_gvec_2 * const nocc[3] = {
+        gen_helper_gvec_vistr8,
+        gen_helper_gvec_vistr16,
+        gen_helper_gvec_vistr32,
+    };
+
+    if (es > ES_32 || m5 & ~0x1) {
+        gen_program_exception(s, PGM_SPECIFICATION);
+        return DISAS_NORETURN;
+    }
+
+    if (m5 & 1) {
+        gen_gvec_2_ptr(get_field(s->fields, v1), get_field(s->fields, v2),
+                       cpu_env, 0, cc[es]);
+        set_cc_static(s);
+    } else {
+        gen_gvec_2_ool(get_field(s->fields, v1), get_field(s->fields, v2), 0,
+                       nocc[es]);
     }
     return DISAS_NEXT;
 }
