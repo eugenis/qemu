@@ -248,3 +248,111 @@ void HELPER(gvec_vistr_cc##BITS)(void *v1, const void *v2,                     \
 DEF_VISTR_CC_HELPER(8)
 DEF_VISTR_CC_HELPER(16)
 DEF_VISTR_CC_HELPER(32)
+
+#define DEF_ELEMENT_COMPARE(BITS)                                              \
+static bool element_compare##BITS(uint##BITS##_t data, uint##BITS##_t l,       \
+                                  uint##BITS##_t c)                            \
+{                                                                              \
+    const bool equal = extract32(c, BITS - 1, 1);                              \
+    const bool lower = extract32(c, BITS - 2, 1);                              \
+    const bool higher = extract32(c, BITS - 3, 1);                             \
+                                                                               \
+    if (equal && data == l) {                                                  \
+        return true;                                                           \
+    } else if (lower && data < l) {                                            \
+        return true;                                                           \
+    } else if (higher && data > l) {                                           \
+        return true;                                                           \
+    }                                                                          \
+    return false;                                                              \
+}
+DEF_ELEMENT_COMPARE(8)
+DEF_ELEMENT_COMPARE(16)
+DEF_ELEMENT_COMPARE(32)
+
+#define DEF_VSTRC(BITS)                                                        \
+static int vstrc##BITS(void *v1, const void *v2, const void *v3,               \
+                       const void *v4, uint8_t m6)                             \
+{                                                                              \
+    const bool in = extract32(m6, 3, 1);                                       \
+    const bool rt = extract32(m6, 2, 1);                                       \
+    const bool zs = extract32(m6, 1, 1);                                       \
+    S390Vector tmp = {};                                                       \
+    int first_byte = 16;                                                       \
+    int cc = 3; /* no match */                                                 \
+    int i, j;                                                                  \
+                                                                               \
+    for (i = 0; i < (128 / BITS); i++) {                                       \
+        const uint##BITS##_t data = s390_vec_read_element##BITS(v2, i);        \
+        bool any_comp = false;                                                 \
+                                                                               \
+        if (zs && !data) {                                                     \
+            if (cc == 3) {                                                     \
+                first_byte = i * (BITS / 8);                                   \
+                cc = 0; /* match for zero */                                   \
+            } else if (cc != 0) {                                              \
+                cc = 2; /* matching elements before match for zero */          \
+            }                                                                  \
+            if (!rt) {                                                         \
+                break;                                                         \
+            }                                                                  \
+        }                                                                      \
+                                                                               \
+        /* compare against every even-odd range pair */                        \
+        for (j = 0; j < (128 / BITS); j += 2) {                                \
+            const uint##BITS##_t l1 = s390_vec_read_element##BITS(v3, j);      \
+            const uint##BITS##_t c1 = s390_vec_read_element##BITS(v4, j);      \
+            const uint##BITS##_t l2 = s390_vec_read_element##BITS(v3, j + 1);  \
+            const uint##BITS##_t c2 = s390_vec_read_element##BITS(v4, j + 1);  \
+                                                                               \
+            if (element_compare##BITS(data, l1, c1) &&                         \
+                element_compare##BITS(data, l2, c2)) {                         \
+                any_comp = true;                                               \
+                break;                                                         \
+            }                                                                  \
+        }                                                                      \
+                                                                               \
+        /* invert the result if requested */                                   \
+        any_comp = in ^ any_comp;                                              \
+        if (cc == 3 && any_comp) {                                             \
+            first_byte = i * (BITS / 8);                                       \
+            cc = 1; /* matching elements, no match for zero */                 \
+            if (!zs && !rt) {                                                  \
+                break;                                                         \
+            }                                                                  \
+        }                                                                      \
+        /* indicate bit vector if requested */                                 \
+        if (rt && any_comp) {                                                  \
+            s390_vec_write_element##BITS(&tmp, i, (uint##BITS##_t)-1ull);      \
+        }                                                                      \
+    }                                                                          \
+    if (!rt) {                                                                 \
+        s390_vec_write_element8(&tmp, 7, first_byte);                          \
+    }                                                                          \
+    *(S390Vector *)v1 = tmp;                                                   \
+    return cc;                                                                 \
+}
+DEF_VSTRC(8)
+DEF_VSTRC(16)
+DEF_VSTRC(32)
+
+#define DEF_VSTRC_HELPER(BITS)                                                 \
+void HELPER(gvec_vstrc##BITS)(void *v1, const void *v2, const void *v3,        \
+                               const void *v4, uint32_t desc)                  \
+{                                                                              \
+    vstrc##BITS(v1, v2, v3, v4, simd_data(desc));                              \
+}
+DEF_VSTRC_HELPER(8)
+DEF_VSTRC_HELPER(16)
+DEF_VSTRC_HELPER(32)
+
+#define DEF_VSTRC_CC_HELPER(BITS)                                              \
+void HELPER(gvec_vstrc_cc##BITS)(void *v1, const void *v2, const void *v3,     \
+                                 const void *v4, CPUS390XState *env,           \
+                                 uint32_t desc)                                \
+{                                                                              \
+    env->cc_op = vstrc##BITS(v1, v2, v3, v4, simd_data(desc));                 \
+}
+DEF_VSTRC_CC_HELPER(8)
+DEF_VSTRC_CC_HELPER(16)
+DEF_VSTRC_CC_HELPER(32)

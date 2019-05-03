@@ -217,6 +217,10 @@ static void get_vec_element_ptr_i64(TCGv_ptr ptr, uint8_t reg, TCGv_i64 enr,
     tcg_gen_gvec_4_ool(vec_full_reg_offset(v1), vec_full_reg_offset(v2), \
                        vec_full_reg_offset(v3), vec_full_reg_offset(v4), \
                        16, 16, data, fn)
+#define gen_gvec_4_ptr(v1, v2, v3, v4, ptr, data, fn) \
+    tcg_gen_gvec_4_ptr(vec_full_reg_offset(v1), vec_full_reg_offset(v2), \
+                       vec_full_reg_offset(v3), vec_full_reg_offset(v4), \
+                       ptr, 16, 16, data, fn)
 #define gen_gvec_dup_i64(es, v1, c) \
     tcg_gen_gvec_dup_i64(es, vec_full_reg_offset(v1), 16, 16, c)
 #define gen_gvec_mov(v1, v2) \
@@ -2476,6 +2480,39 @@ static DisasJumpType op_vistr(DisasContext *s, DisasOps *o)
         set_cc_static(s);
     } else {
         gen_gvec_2_ool(get_field(s->fields, v1), get_field(s->fields, v2), 0,
+                       nocc[es]);
+    }
+    return DISAS_NEXT;
+}
+
+static DisasJumpType op_vstrc(DisasContext *s, DisasOps *o)
+{
+    const uint8_t es = get_field(s->fields, m5);
+    const uint8_t m6 = get_field(s->fields, m6);
+    static gen_helper_gvec_4_ptr * const cc[3] = {
+        gen_helper_gvec_vstrc_cc8,
+        gen_helper_gvec_vstrc_cc16,
+        gen_helper_gvec_vstrc_cc32,
+    };
+    static gen_helper_gvec_4 * const nocc[3] = {
+        gen_helper_gvec_vstrc8,
+        gen_helper_gvec_vstrc16,
+        gen_helper_gvec_vstrc32,
+    };
+
+    if (es > ES_32) {
+        gen_program_exception(s, PGM_SPECIFICATION);
+        return DISAS_NORETURN;
+    }
+
+    if (m6 & 1) {
+        gen_gvec_4_ptr(get_field(s->fields, v1), get_field(s->fields, v2),
+                       get_field(s->fields, v3), get_field(s->fields, v4),
+                       cpu_env, m6, cc[es]);
+        set_cc_static(s);
+    } else {
+        gen_gvec_4_ool(get_field(s->fields, v1), get_field(s->fields, v2),
+                       get_field(s->fields, v3), get_field(s->fields, v4), m6,
                        nocc[es]);
     }
     return DISAS_NEXT;
