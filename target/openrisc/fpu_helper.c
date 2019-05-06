@@ -61,22 +61,22 @@ void HELPER(update_fpcsr)(CPUOpenRISCState *env)
     }
 }
 
-uint64_t HELPER(itofd)(CPUOpenRISCState *env, uint64_t val)
+uint64_t HELPER(itofd)(CPUOpenRISCState *env, target_ulong val)
 {
     return int32_to_float64(val, &env->fp_status);
 }
 
-uint32_t HELPER(itofs)(CPUOpenRISCState *env, uint32_t val)
+uint32_t HELPER(itofs)(CPUOpenRISCState *env, target_ulong val)
 {
     return int32_to_float32(val, &env->fp_status);
 }
 
-uint64_t HELPER(ftoid)(CPUOpenRISCState *env, uint64_t val)
+target_ulong HELPER(ftoid)(CPUOpenRISCState *env, uint64_t val)
 {
-    return float32_to_int64(val, &env->fp_status);
+    return float32_to_int32(val, &env->fp_status);
 }
 
-uint32_t HELPER(ftois)(CPUOpenRISCState *env, uint32_t val)
+target_ulong HELPER(ftois)(CPUOpenRISCState *env, uint32_t val)
 {
     return float32_to_int32(val, &env->fp_status);
 }

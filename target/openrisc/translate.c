@@ -1276,6 +1276,178 @@ static bool trans_lf_sfle_s(DisasContext *dc, arg_ab *a)
     return true;
 }
 
+static void check_r0_write_pair(DisasContext *dc, int reg, int p)
+{
+    check_r0_write(dc, reg);
+    check_r0_write(dc, (reg + 1 + p) & 31);
+}
+
+static void load_pair(DisasContext *dc, TCGv_i64 t, int r, int p)
+{
+    tcg_gen_concat_i32_i64(t, cpu_R(dc, r), cpu_R(dc, (r + 1 + p) & 31));
+}
+
+static void save_pair(DisasContext *dc, TCGv_i64 t, int r, int p)
+{
+    tcg_gen_extr_i64_i32(cpu_R(dc, r), cpu_R(dc, (r + 1 + p) & 31), t);
+}
+
+static void do_dp3(DisasContext *dc, arg_dab_pair *a,
+                   void (*fn)(TCGv_i64, TCGv_env, TCGv_i64, TCGv_i64))
+{
+    TCGv_i64 t0 = tcg_temp_new_i64();
+    TCGv_i64 t1 = tcg_temp_new_i64();
+
+    check_r0_write_pair(dc, a->d, a->dp);
+
+    load_pair(dc, t0, a->a, a->ap);
+    load_pair(dc, t1, a->b, a->bp);
+    fn(t0, cpu_env, t0, t1);
+    save_pair(dc, t0, a->d, a->dp);
+    tcg_temp_free_i64(t0);
+    tcg_temp_free_i64(t1);
+
+    gen_helper_update_fpcsr(cpu_env);
+}
+
+static void do_dpcmp(DisasContext *dc, arg_ab_pair *a,
+                     void (*fn)(TCGv, TCGv_env, TCGv_i64, TCGv_i64),
+                     bool inv, bool swap)
+{
+    TCGv_i64 t0 = tcg_temp_new_i64();
+    TCGv_i64 t1 = tcg_temp_new_i64();
+
+    load_pair(dc, t0, a->a, a->ap);
+    load_pair(dc, t1, a->b, a->bp);
+    if (swap) {
+        fn(cpu_sr_f, cpu_env, t1, t0);
+    } else {
+        fn(cpu_sr_f, cpu_env, t0, t1);
+    }
+    tcg_temp_free_i64(t0);
+    tcg_temp_free_i64(t1);
+
+    if (inv) {
+        tcg_gen_xori_tl(cpu_sr_f, cpu_sr_f, 1);
+    }
+    gen_helper_update_fpcsr(cpu_env);
+}
+
+static bool trans_lf_add_d(DisasContext *dc, arg_dab_pair *a)
+{
+    do_dp3(dc, a, gen_helper_float_add_d);
+    return true;
+}
+
+static bool trans_lf_sub_d(DisasContext *dc, arg_dab_pair *a)
+{
+    do_dp3(dc, a, gen_helper_float_sub_d);
+    return true;
+}
+
+static bool trans_lf_mul_d(DisasContext *dc, arg_dab_pair *a)
+{
+    do_dp3(dc, a, gen_helper_float_mul_d);
+    return true;
+}
+
+static bool trans_lf_div_d(DisasContext *dc, arg_dab_pair *a)
+{
+    do_dp3(dc, a, gen_helper_float_div_d);
+    return true;
+}
+
+static bool trans_lf_rem_d(DisasContext *dc, arg_dab_pair *a)
+{
+    do_dp3(dc, a, gen_helper_float_rem_d);
+    return true;
+}
+
+static bool trans_lf_itof_d(DisasContext *dc, arg_lf_itof_d *a)
+{
+    TCGv_i64 t0 = tcg_temp_new_i64();
+
+    check_r0_write_pair(dc, a->d, a->dp);
+
+    gen_helper_itofd(t0, cpu_env, cpu_R(dc, a->a));
+    save_pair(dc, t0, a->d, a->dp);
+    tcg_temp_free_i64(t0);
+
+    gen_helper_update_fpcsr(cpu_env);
+    return true;
+}
+
+static bool trans_lf_ftoi_d(DisasContext *dc, arg_lf_ftoi_d *a)
+{
+    TCGv_i64 t0 = tcg_temp_new_i64();
+
+    check_r0_write(dc, a->d);
+
+    load_pair(dc, t0, a->a, a->ap);
+    gen_helper_ftoid(cpu_R(dc, a->d), cpu_env, t0);
+    tcg_temp_free_i64(t0);
+
+    gen_helper_update_fpcsr(cpu_env);
+    return true;
+}
+
+static bool trans_lf_madd_d(DisasContext *dc, arg_dab_pair *a)
+{
+    TCGv_i64 t0 = tcg_temp_new_i64();
+    TCGv_i64 t1 = tcg_temp_new_i64();
+    TCGv_i64 t2 = tcg_temp_new_i64();
+
+    check_r0_write_pair(dc, a->d, a->dp);
+
+    load_pair(dc, t0, a->d, a->dp);
+    load_pair(dc, t1, a->a, a->ap);
+    load_pair(dc, t2, a->b, a->bp);
+    gen_helper_float_madd_d(t0, cpu_env, t0, t1, t2);
+    save_pair(dc, t0, a->d, a->dp);
+    tcg_temp_free_i64(t0);
+    tcg_temp_free_i64(t1);
+    tcg_temp_free_i64(t2);
+
+    gen_helper_update_fpcsr(cpu_env);
+    return true;
+}
+
+static bool trans_lf_sfeq_d(DisasContext *dc, arg_ab_pair *a)
+{
+    do_dpcmp(dc, a, gen_helper_float_eq_d, false, false);
+    return true;
+}
+
+static bool trans_lf_sfne_d(DisasContext *dc, arg_ab_pair *a)
+{
+    do_dpcmp(dc, a, gen_helper_float_eq_d, true, false);
+    return true;
+}
+
+static bool trans_lf_sfgt_d(DisasContext *dc, arg_ab_pair *a)
+{
+    do_dpcmp(dc, a, gen_helper_float_lt_d, false, true);
+    return true;
+}
+
+static bool trans_lf_sfge_d(DisasContext *dc, arg_ab_pair *a)
+{
+    do_dpcmp(dc, a, gen_helper_float_le_d, false, true);
+    return true;
+}
+
+static bool trans_lf_sflt_d(DisasContext *dc, arg_ab_pair *a)
+{
+    do_dpcmp(dc, a, gen_helper_float_lt_d, false, false);
+    return true;
+}
+
+static bool trans_lf_sfle_d(DisasContext *dc, arg_ab_pair *a)
+{
+    do_dpcmp(dc, a, gen_helper_float_le_d, false, false);
+    return true;
+}
+
 static void openrisc_tr_init_disas_context(DisasContextBase *dcb, CPUState *cs)
 {
     DisasContext *dc = container_of(dcb, DisasContext, base);

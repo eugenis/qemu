@@ -26,10 +26,10 @@ DEF_HELPER_FLAGS_1(ove_cyov, TCG_CALL_NO_WG, void, env)
 /* float */
 DEF_HELPER_FLAGS_1(update_fpcsr, TCG_CALL_NO_WG, void, env)
 
-DEF_HELPER_FLAGS_2(itofd, TCG_CALL_NO_RWG, i64, env, i64)
-DEF_HELPER_FLAGS_2(itofs, TCG_CALL_NO_RWG, i32, env, i32)
-DEF_HELPER_FLAGS_2(ftoid, TCG_CALL_NO_RWG, i64, env, i64)
-DEF_HELPER_FLAGS_2(ftois, TCG_CALL_NO_RWG, i32, env, i32)
+DEF_HELPER_FLAGS_2(itofd, TCG_CALL_NO_RWG, i64, env, tl)
+DEF_HELPER_FLAGS_2(itofs, TCG_CALL_NO_RWG, i32, env, tl)
+DEF_HELPER_FLAGS_2(ftoid, TCG_CALL_NO_RWG, tl, env, i64)
+DEF_HELPER_FLAGS_2(ftois, TCG_CALL_NO_RWG, tl, env, i32)
 
 DEF_HELPER_FLAGS_4(float_madd_s, TCG_CALL_NO_RWG, i32, env, i32, i32, i32)
 DEF_HELPER_FLAGS_4(float_madd_d, TCG_CALL_NO_RWG, i64, env, i64, i64, i64)
