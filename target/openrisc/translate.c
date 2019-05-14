@@ -1276,6 +1276,42 @@ static bool trans_lf_sfle_s(DisasContext *dc, arg_ab *a)
     return true;
 }
 
+static bool trans_lf_sfueq_s(DisasContext *dc, arg_ab *a)
+{
+    do_fpcmp(dc, a, gen_helper_float_ueq_s, false, false);
+    return true;
+}
+
+static bool trans_lf_sfult_s(DisasContext *dc, arg_ab *a)
+{
+    do_fpcmp(dc, a, gen_helper_float_ult_s, false, false);
+    return true;
+}
+
+static bool trans_lf_sfugt_s(DisasContext *dc, arg_ab *a)
+{
+    do_fpcmp(dc, a, gen_helper_float_ult_s, false, true);
+    return true;
+}
+
+static bool trans_lf_sfule_s(DisasContext *dc, arg_ab *a)
+{
+    do_fpcmp(dc, a, gen_helper_float_ule_s, false, false);
+    return true;
+}
+
+static bool trans_lf_sfuge_s(DisasContext *dc, arg_ab *a)
+{
+    do_fpcmp(dc, a, gen_helper_float_ule_s, false, true);
+    return true;
+}
+
+static bool trans_lf_sfun_s(DisasContext *dc, arg_ab *a)
+{
+    do_fpcmp(dc, a, gen_helper_float_un_s, false, false);
+    return true;
+}
+
 static void check_r0_write_pair(DisasContext *dc, int reg, int p)
 {
     check_r0_write(dc, reg);
@@ -1445,6 +1481,42 @@ static bool trans_lf_sflt_d(DisasContext *dc, arg_ab_pair *a)
 static bool trans_lf_sfle_d(DisasContext *dc, arg_ab_pair *a)
 {
     do_dpcmp(dc, a, gen_helper_float_le_d, false, false);
+    return true;
+}
+
+static bool trans_lf_sfueq_d(DisasContext *dc, arg_ab_pair *a)
+{
+    do_dpcmp(dc, a, gen_helper_float_ueq_d, false, false);
+    return true;
+}
+
+static bool trans_lf_sfule_d(DisasContext *dc, arg_ab_pair *a)
+{
+    do_dpcmp(dc, a, gen_helper_float_ule_d, false, false);
+    return true;
+}
+
+static bool trans_lf_sfuge_d(DisasContext *dc, arg_ab_pair *a)
+{
+    do_dpcmp(dc, a, gen_helper_float_ule_d, false, true);
+    return true;
+}
+
+static bool trans_lf_sfult_d(DisasContext *dc, arg_ab_pair *a)
+{
+    do_dpcmp(dc, a, gen_helper_float_ult_d, false, false);
+    return true;
+}
+
+static bool trans_lf_sfugt_d(DisasContext *dc, arg_ab_pair *a)
+{
+    do_dpcmp(dc, a, gen_helper_float_ult_d, false, true);
+    return true;
+}
+
+static bool trans_lf_sfun_d(DisasContext *dc, arg_ab_pair *a)
+{
+    do_dpcmp(dc, a, gen_helper_float_un_d, false, false);
     return true;
 }
 
