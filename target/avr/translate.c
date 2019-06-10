@@ -57,10 +57,9 @@ static TCGv cpu_skip;
 #define REG(x) (cpu_r[x])
 
 enum {
-    BS_NONE = 0, /* Nothing special (none of the below) */
-    BS_STOP = 1, /* We want to stop translation for any reason */
-    BS_BRANCH = 2, /* A branch condition is reached */
-    BS_EXCP = 3, /* An exception condition is reached */
+    DISAS_EXIT   = DISAS_TARGET_0,  /* We want return to the cpu main loop.  */
+    DISAS_LOOKUP = DISAS_TARGET_1,  /* We have a variable condition exit.  */
+    DISAS_CHAIN  = DISAS_TARGET_2,  /* We have a single condition exit.  */
 };
 
 typedef struct DisasContext DisasContext;
@@ -114,6 +113,7 @@ static void gen_goto_tb(DisasContext *ctx, int n, target_ulong dest)
         gen_helper_debug(cpu_env);
         tcg_gen_exit_tb(NULL, 0);
     }
+    ctx->bstate = DISAS_NORETURN;
 }
 
 #include "exec/gen-icount.h"
@@ -251,18 +251,13 @@ static void gen_push_ret(DisasContext *ctx, int ret)
 static void gen_pop_ret(DisasContext *ctx, TCGv ret)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_1_BYTE_PC)) {
-
         tcg_gen_addi_tl(cpu_sp, cpu_sp, 1);
         tcg_gen_qemu_ld_tl(ret, cpu_sp, MMU_DATA_IDX, MO_UB);
-
     } else if (avr_feature(ctx->env, AVR_FEATURE_2_BYTE_PC)) {
-
         tcg_gen_addi_tl(cpu_sp, cpu_sp, 1);
         tcg_gen_qemu_ld_tl(ret, cpu_sp, MMU_DATA_IDX, MO_BEUW);
         tcg_gen_addi_tl(cpu_sp, cpu_sp, 1);
-
     } else if (avr_feature(ctx->env, AVR_FEATURE_3_BYTE_PC)) {
-
         TCGv lo = tcg_temp_new_i32();
         TCGv hi = tcg_temp_new_i32();
 
@@ -279,17 +274,17 @@ static void gen_pop_ret(DisasContext *ctx, TCGv ret)
     }
 }
 
-static void gen_jmp_ez(void)
+static void gen_jmp_ez(DisasContext *ctx)
 {
     tcg_gen_deposit_tl(cpu_pc, cpu_r[30], cpu_r[31], 8, 8);
     tcg_gen_or_tl(cpu_pc, cpu_pc, cpu_eind);
-    tcg_gen_exit_tb(NULL, 0);
+    ctx->bstate = DISAS_LOOKUP;
 }
 
-static void gen_jmp_z(void)
+static void gen_jmp_z(DisasContext *ctx)
 {
     tcg_gen_deposit_tl(cpu_pc, cpu_r[30], cpu_r[31], 8, 8);
-    tcg_gen_exit_tb(NULL, 0);
+    ctx->bstate = DISAS_LOOKUP;
 }
 
 /*
@@ -413,8 +408,7 @@ static bool trans_ADIW(DisasContext *ctx, arg_ADIW *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_ADIW_SBIW) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -622,8 +616,6 @@ static bool trans_BRBC(DisasContext *ctx, arg_BRBC *a)
     gen_goto_tb(ctx, 1, ctx->npc);
     gen_set_label(taken);
     gen_goto_tb(ctx, 0, ctx->npc + a->imm);
-
-    ctx->bstate = BS_BRANCH;
     return true;
 }
 
@@ -667,8 +659,6 @@ static bool trans_BRBS(DisasContext *ctx, arg_BRBS *a)
     gen_goto_tb(ctx, 1, ctx->npc);
     gen_set_label(taken);
     gen_goto_tb(ctx, 0, ctx->npc + a->imm);
-
-    ctx->bstate = BS_BRANCH;
     return true;
 }
 
@@ -721,8 +711,7 @@ static bool trans_BREAK(DisasContext *ctx, arg_BREAK *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_BREAK) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -755,8 +744,7 @@ static bool trans_CALL(DisasContext *ctx, arg_CALL *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_JMP_CALL) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -765,8 +753,6 @@ static bool trans_CALL(DisasContext *ctx, arg_CALL *a)
 
     gen_push_ret(ctx, ret);
     gen_goto_tb(ctx, 0, Imm);
-
-    ctx->bstate = BS_BRANCH;
     return true;
 }
 
@@ -954,8 +940,7 @@ static bool trans_DES(DisasContext *ctx, arg_DES *a)
     /* TODO */
     if (avr_feature(ctx->env, AVR_FEATURE_DES) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -974,18 +959,14 @@ static bool trans_EICALL(DisasContext *ctx, arg_EICALL *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_EIJMP_EICALL) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
     int ret = ctx->npc;
 
     gen_push_ret(ctx, ret);
-
-    gen_jmp_ez();
-
-    ctx->bstate = BS_BRANCH;
+    gen_jmp_ez(ctx);
     return true;
 }
 
@@ -1000,14 +981,11 @@ static bool trans_EIJMP(DisasContext *ctx, arg_EIJMP *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_EIJMP_EICALL) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
-    gen_jmp_ez();
-
-    ctx->bstate = BS_BRANCH;
+    gen_jmp_ez(ctx);
     return true;
 }
 
@@ -1031,8 +1009,7 @@ static bool trans_ELPM1(DisasContext *ctx, arg_ELPM1 *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_ELPM) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -1050,8 +1027,7 @@ static bool trans_ELPM2(DisasContext *ctx, arg_ELPM2 *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_ELPM) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -1069,8 +1045,7 @@ static bool trans_ELPMX(DisasContext *ctx, arg_ELPMX *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_ELPMX) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -1113,8 +1088,7 @@ static bool trans_FMUL(DisasContext *ctx, arg_FMUL *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_MUL) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -1147,8 +1121,7 @@ static bool trans_FMULS(DisasContext *ctx, arg_FMULS *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_MUL) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -1187,8 +1160,7 @@ static bool trans_FMULSU(DisasContext *ctx, arg_FMULSU *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_MUL) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -1227,17 +1199,14 @@ static bool trans_ICALL(DisasContext *ctx, arg_ICALL *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_IJMP_ICALL) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
     int ret = ctx->npc;
 
     gen_push_ret(ctx, ret);
-    gen_jmp_z();
-
-    ctx->bstate = BS_BRANCH;
+    gen_jmp_z(ctx);
     return true;
 }
 
@@ -1252,14 +1221,11 @@ static bool trans_IJMP(DisasContext *ctx, arg_IJMP *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_IJMP_ICALL) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
-    gen_jmp_z();
-
-    ctx->bstate = BS_BRANCH;
+    gen_jmp_z(ctx);
     return true;
 }
 
@@ -1309,13 +1275,11 @@ static bool trans_JMP(DisasContext *ctx, arg_JMP *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_JMP_CALL) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
     gen_goto_tb(ctx, 0, a->imm);
-    ctx->bstate = BS_BRANCH;
     return true;
 }
 
@@ -1351,8 +1315,7 @@ static bool trans_LAC(DisasContext *ctx, arg_LAC *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_RMW) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -1389,8 +1352,7 @@ static bool trans_LAS(DisasContext *ctx, arg_LAS *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_RMW) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -1426,8 +1388,7 @@ static bool trans_LAT(DisasContext *ctx, arg_LAT *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_RMW) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -1716,8 +1677,7 @@ static bool trans_LPM1(DisasContext *ctx, arg_LPM1 *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_LPM) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -1740,8 +1700,7 @@ static bool trans_LPM2(DisasContext *ctx, arg_LPM2 *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_LPM) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -1764,8 +1723,7 @@ static bool trans_LPMX(DisasContext *ctx, arg_LPMX *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_LPMX) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -1838,8 +1796,7 @@ static bool trans_MOVW(DisasContext *ctx, arg_MOVW *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_MOVW) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -1861,8 +1818,7 @@ static bool trans_MUL(DisasContext *ctx, arg_MUL *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_MUL) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -1892,8 +1848,7 @@ static bool trans_MULS(DisasContext *ctx, arg_MULS *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_MUL) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -1930,8 +1885,7 @@ static bool trans_MULSU(DisasContext *ctx, arg_MULSU *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_MUL) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -2106,8 +2060,6 @@ static bool trans_RCALL(DisasContext *ctx, arg_RCALL *a)
 
     gen_push_ret(ctx, ret);
     gen_goto_tb(ctx, 0, dst);
-
-    ctx->bstate = BS_BRANCH;
     return true;
 }
 
@@ -2118,10 +2070,7 @@ static bool trans_RCALL(DisasContext *ctx, arg_RCALL *a)
 static bool trans_RET(DisasContext *ctx, arg_RET *a)
 {
     gen_pop_ret(ctx, cpu_pc);
-
-    tcg_gen_exit_tb(NULL, 0);
-
-    ctx->bstate = BS_BRANCH;
+    ctx->bstate = DISAS_LOOKUP;
     return true;
 }
 
@@ -2136,12 +2085,9 @@ static bool trans_RET(DisasContext *ctx, arg_RET *a)
 static bool trans_RETI(DisasContext *ctx, arg_RETI *a)
 {
     gen_pop_ret(ctx, cpu_pc);
-
     tcg_gen_movi_tl(cpu_If, 1);
-
-    tcg_gen_exit_tb(NULL, 0);
-
-    ctx->bstate = BS_BRANCH;
+    /* Need to return to main loop to re-evaluate interrupts.  */
+    ctx->bstate = DISAS_EXIT;
     return true;
 }
 
@@ -2156,8 +2102,6 @@ static bool trans_RJMP(DisasContext *ctx, arg_RJMP *a)
     int dst = ctx->npc + a->imm;
 
     gen_goto_tb(ctx, 0, dst);
-
-    ctx->bstate = BS_BRANCH;
     return true;
 }
 
@@ -2327,8 +2271,7 @@ static bool trans_SBIW(DisasContext *ctx, arg_SBIW *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_ADIW_SBIW) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -2415,8 +2358,7 @@ static bool trans_SBRS(DisasContext *ctx, arg_SBRS *a)
 static bool trans_SLEEP(DisasContext *ctx, arg_SLEEP *a)
 {
     gen_helper_sleep(cpu_env);
-
-    ctx->bstate = BS_EXCP;
+    ctx->bstate = DISAS_NORETURN;
     return true;
 }
 
@@ -2442,8 +2384,7 @@ static bool trans_SPM(DisasContext *ctx, arg_SPM *a)
     /* TODO */
     if (avr_feature(ctx->env, AVR_FEATURE_SPM) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -2455,8 +2396,7 @@ static bool trans_SPMX(DisasContext *ctx, arg_SPMX *a)
     /* TODO */
     if (avr_feature(ctx->env, AVR_FEATURE_SPMX) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -2717,8 +2657,7 @@ static bool trans_XCH(DisasContext *ctx, arg_XCH *a)
 {
     if (avr_feature(ctx->env, AVR_FEATURE_RMW) == false) {
         gen_helper_unsupported(cpu_env);
-
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
         return true;
     }
 
@@ -2777,17 +2716,13 @@ void avr_cpu_tcg_init(void)
 static void translate(DisasContext *ctx)
 {
     uint32_t opcode;
-    int res;
-    /* PC points to words.  */
-    opcode = cpu_ldl_code(ctx->env, ctx->cpc * 2) & 0x0000ffff;
 
-    ctx->npc = ctx->cpc + 1;
+    ctx->npc = ctx->cpc;
+    opcode = next_word(ctx);
 
-    res = decode_insn(ctx, opcode);
-
-    if (res == false) {
+    if (!decode_insn(ctx, opcode)) {
         gen_helper_unsupported(cpu_env);
-        ctx->bstate = BS_EXCP;
+        ctx->bstate = DISAS_NORETURN;
     }
 }
 
@@ -2799,7 +2734,7 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
         .cs = cs,
         .env = env,
         .memidx = 0,
-        .bstate = BS_NONE,
+        .bstate = DISAS_NEXT,
         .singlestep = cs->singlestep_enabled,
     };
     target_ulong pc_start = tb->pc / 2;
@@ -2833,7 +2768,6 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
                  cpu_breakpoint_test(cs, OFFSET_DATA + ctx.cpc * 2, BP_ANY)))) {
             tcg_gen_movi_tl(cpu_pc, ctx.cpc);
             gen_helper_debug(cpu_env);
-            ctx.bstate = BS_EXCP;
             goto done_generating;
         }
 
@@ -2864,31 +2798,36 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
         }
 
         ctx.cpc = ctx.npc;
-    } while (ctx.bstate == BS_NONE && !tcg_op_buf_full());
+    } while (ctx.bstate == DISAS_NEXT && !tcg_op_buf_full());
 
     if (tb->cflags & CF_LAST_IO) {
         gen_io_end();
     }
 
-    if (ctx.singlestep) {
-        if (ctx.bstate == BS_STOP || ctx.bstate == BS_NONE) {
-            tcg_gen_movi_tl(cpu_pc, ctx.npc);
-        }
-        gen_helper_debug(cpu_env);
-        tcg_gen_exit_tb(NULL, 0);
-    } else {
-        switch (ctx.bstate) {
-        case BS_STOP:
-        case BS_NONE:
-            gen_goto_tb(&ctx, 0, ctx.npc);
+    switch (ctx.bstate) {
+    case DISAS_NORETURN:
+        break;
+    case DISAS_NEXT:
+    case DISAS_TOO_MANY:
+    case DISAS_CHAIN:
+        /* Note gen_goto_tb checks singlestep.  */
+        gen_goto_tb(&ctx, 0, ctx.npc);
+        break;
+    case DISAS_LOOKUP:
+        if (!ctx.singlestep) {
+            tcg_gen_lookup_and_goto_ptr();
             break;
-        case BS_EXCP:
-        case BS_BRANCH:
+        }
+        /* fall through */
+    case DISAS_EXIT:
+        if (ctx.singlestep) {
+            gen_helper_debug(cpu_env);
+        } else {
             tcg_gen_exit_tb(NULL, 0);
-            break;
-        default:
-            break;
         }
+        break;
+    default:
+        g_assert_not_reached();
     }
 
 done_generating:
