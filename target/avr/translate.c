@@ -71,7 +71,6 @@ struct DisasContext {
     CPUAVRState *env;
     CPUState *cs;
 
-    target_long cpc;
     target_long npc;
     uint32_t opcode;
 
@@ -2715,10 +2714,7 @@ void avr_cpu_tcg_init(void)
 
 static void translate(DisasContext *ctx)
 {
-    uint32_t opcode;
-
-    ctx->npc = ctx->cpc;
-    opcode = next_word(ctx);
+    uint32_t opcode = next_word(ctx);
 
     if (!decode_insn(ctx, opcode)) {
         gen_helper_unsupported(cpu_env);
@@ -2747,14 +2743,17 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
          */
         max_insns = 1;
     }
+    if (ctx.singlestep) {
+        max_insns = 1;
+    }
 
     gen_tb_start(tb);
 
-    ctx.cpc = pc_start;
+    ctx.npc = pc_start;
     ctx.check_skip = 1;
     do {
         /* translate current instruction */
-        tcg_gen_insn_start(ctx.cpc);
+        tcg_gen_insn_start(ctx.npc);
         num_insns++;
 
         /*
@@ -2764,9 +2763,9 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
          * b *0x100 - sets breakpoint at address 0x00800100 (data)
          */
         if (unlikely(!ctx.singlestep &&
-                (cpu_breakpoint_test(cs, OFFSET_CODE + ctx.cpc * 2, BP_ANY) ||
-                 cpu_breakpoint_test(cs, OFFSET_DATA + ctx.cpc * 2, BP_ANY)))) {
-            tcg_gen_movi_tl(cpu_pc, ctx.cpc);
+                (cpu_breakpoint_test(cs, OFFSET_CODE + ctx.npc * 2, BP_ANY) ||
+                 cpu_breakpoint_test(cs, OFFSET_DATA + ctx.npc * 2, BP_ANY)))) {
+            tcg_gen_movi_tl(cpu_pc, ctx.npc);
             gen_helper_debug(cpu_env);
             goto done_generating;
         }
@@ -2786,19 +2785,10 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
         } else {
             translate(&ctx);
         }
-
-        if (num_insns >= max_insns) {
-            break; /* max translated instructions limit reached */
-        }
-        if (ctx.singlestep) {
-            break; /* single step */
-        }
-        if ((ctx.cpc & (TARGET_PAGE_SIZE - 1)) == 0) {
-            break; /* page boundary */
-        }
-
-        ctx.cpc = ctx.npc;
-    } while (ctx.bstate == DISAS_NEXT && !tcg_op_buf_full());
+    } while (ctx.bstate == DISAS_NEXT
+             && num_insns < max_insns
+             && (ctx.npc - pc_start) * 2 < TARGET_PAGE_SIZE - 4
+             && !tcg_op_buf_full());
 
     if (tb->cflags & CF_LAST_IO) {
         gen_io_end();
