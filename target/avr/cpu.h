@@ -187,6 +187,7 @@ int avr_cpu_memory_rw_debug(CPUState *cs, vaddr address, uint8_t *buf,
 
 enum {
     TB_FLAGS_FULL_ACCESS = 1,
+    TB_FLAGS_SKIP = 2,
 };
 
 static inline void cpu_get_tb_cpu_state(CPUAVRState *env, target_ulong *pc,
@@ -199,6 +200,9 @@ static inline void cpu_get_tb_cpu_state(CPUAVRState *env, target_ulong *pc,
 
     if (env->fullacc) {
         flags |= TB_FLAGS_FULL_ACCESS;
+    }
+    if (env->skip) {
+        flags |= TB_FLAGS_SKIP;
     }
 
     *pflags = flags;

@@ -78,7 +78,11 @@ struct DisasContext {
     int memidx;
     int bstate;
     int singlestep;
-    int check_skip;
+
+    TCGv skip_var0;
+    TCGv skip_var1;
+    TCGCond skip_cond;
+    bool free_skip_var0;
 };
 
 static int to_A(DisasContext *ctx, int indx) { return 16 + (indx % 16); }
@@ -583,38 +587,45 @@ static bool trans_BLD(DisasContext *ctx, arg_BLD *a)
  */
 static bool trans_BRBC(DisasContext *ctx, arg_BRBC *a)
 {
-    TCGLabel *taken = gen_new_label();
+    TCGLabel *not_taken = gen_new_label();
+    TCGCond cond = TCG_COND_EQ;
+    TCGv var;
 
     switch (a->bit) {
     case 0x00:
-        tcg_gen_brcondi_i32(TCG_COND_EQ, cpu_Cf, 0, taken);
+        var = cpu_Cf;
         break;
     case 0x01:
-        tcg_gen_brcondi_i32(TCG_COND_NE, cpu_Zf, 0, taken);
+        cond = TCG_COND_NE;
+        var = cpu_Zf;
         break;
     case 0x02:
-        tcg_gen_brcondi_i32(TCG_COND_EQ, cpu_Nf, 0, taken);
+        var = cpu_Nf;
         break;
     case 0x03:
-        tcg_gen_brcondi_i32(TCG_COND_EQ, cpu_Vf, 0, taken);
+        var = cpu_Vf;
         break;
     case 0x04:
-        tcg_gen_brcondi_i32(TCG_COND_EQ, cpu_Sf, 0, taken);
+        var = cpu_Sf;
         break;
     case 0x05:
-        tcg_gen_brcondi_i32(TCG_COND_EQ, cpu_Hf, 0, taken);
+        var = cpu_Hf;
         break;
     case 0x06:
-        tcg_gen_brcondi_i32(TCG_COND_EQ, cpu_Tf, 0, taken);
+        var = cpu_Tf;
         break;
     case 0x07:
-        tcg_gen_brcondi_i32(TCG_COND_EQ, cpu_If, 0, taken);
+        var = cpu_If;
         break;
+    default:
+        g_assert_not_reached();
     }
 
-    gen_goto_tb(ctx, 1, ctx->npc);
-    gen_set_label(taken);
-    gen_goto_tb(ctx, 0, ctx->npc + a->imm);
+    tcg_gen_brcondi_i32(tcg_invert_cond(cond), var, 0, not_taken);
+    gen_goto_tb(ctx, 1, ctx->npc + a->imm);
+    gen_set_label(not_taken);
+
+    ctx->bstate = DISAS_CHAIN;
     return true;
 }
 
@@ -626,38 +637,45 @@ static bool trans_BRBC(DisasContext *ctx, arg_BRBC *a)
  */
 static bool trans_BRBS(DisasContext *ctx, arg_BRBS *a)
 {
-    TCGLabel *taken = gen_new_label();
+    TCGLabel *not_taken = gen_new_label();
+    TCGCond cond = TCG_COND_NE;
+    TCGv var;
 
     switch (a->bit) {
     case 0x00:
-        tcg_gen_brcondi_i32(TCG_COND_EQ, cpu_Cf, 1, taken);
+        var = cpu_Cf;
         break;
     case 0x01:
-        tcg_gen_brcondi_i32(TCG_COND_EQ, cpu_Zf, 0, taken);
+        cond = TCG_COND_EQ;
+        var = cpu_Zf;
         break;
     case 0x02:
-        tcg_gen_brcondi_i32(TCG_COND_EQ, cpu_Nf, 1, taken);
+        var = cpu_Nf;
         break;
     case 0x03:
-        tcg_gen_brcondi_i32(TCG_COND_EQ, cpu_Vf, 1, taken);
+        var = cpu_Vf;
         break;
     case 0x04:
-        tcg_gen_brcondi_i32(TCG_COND_EQ, cpu_Sf, 1, taken);
+        var = cpu_Sf;
         break;
     case 0x05:
-        tcg_gen_brcondi_i32(TCG_COND_EQ, cpu_Hf, 1, taken);
+        var = cpu_Hf;
         break;
     case 0x06:
-        tcg_gen_brcondi_i32(TCG_COND_EQ, cpu_Tf, 1, taken);
+        var = cpu_Tf;
         break;
     case 0x07:
-        tcg_gen_brcondi_i32(TCG_COND_EQ, cpu_If, 1, taken);
+        var = cpu_If;
         break;
+    default:
+        g_assert_not_reached();
     }
 
-    gen_goto_tb(ctx, 1, ctx->npc);
-    gen_set_label(taken);
-    gen_goto_tb(ctx, 0, ctx->npc + a->imm);
+    tcg_gen_brcondi_i32(tcg_invert_cond(cond), var, 0, not_taken);
+    gen_goto_tb(ctx, 1, ctx->npc + a->imm);
+    gen_set_label(not_taken);
+
+    ctx->bstate = DISAS_CHAIN;
     return true;
 }
 
@@ -882,13 +900,9 @@ static bool trans_CPI(DisasContext *ctx, arg_CPI *a)
  */
 static bool trans_CPSE(DisasContext *ctx, arg_CPSE *a)
 {
-    TCGv Rd = cpu_r[a->rd];
-    TCGv Rr = cpu_r[a->rr];
-
-    tcg_gen_setcond_tl(TCG_COND_EQ, cpu_skip, Rd, Rr);
-
-    ctx->check_skip++;
-
+    ctx->skip_cond = TCG_COND_EQ;
+    ctx->skip_var0 = cpu_r[a->rd];
+    ctx->skip_var1 = cpu_r[a->rr];
     return true;
 }
 
@@ -2220,18 +2234,13 @@ static bool trans_SBI(DisasContext *ctx, arg_SBI *a)
  */
 static bool trans_SBIC(DisasContext *ctx, arg_SBIC *a)
 {
-    TCGv data = tcg_temp_new_i32();
-    TCGv port = tcg_const_i32(a->reg);
+    TCGv temp = tcg_const_i32(a->reg);
 
-    gen_helper_inb(data, cpu_env, port);
-
-    tcg_gen_andi_tl(data, data, 1 << a->bit);
-    tcg_gen_setcondi_tl(TCG_COND_EQ, cpu_skip, data, 0);
-
-    tcg_temp_free_i32(port);
-    tcg_temp_free_i32(data);
-
-    ctx->check_skip++;
+    gen_helper_inb(temp, cpu_env, temp);
+    tcg_gen_andi_tl(temp, temp, 1 << a->bit);
+    ctx->skip_cond = TCG_COND_EQ;
+    ctx->skip_var0 = temp;
+    ctx->free_skip_var0 = true;
 
     return true;
 }
@@ -2243,18 +2252,13 @@ static bool trans_SBIC(DisasContext *ctx, arg_SBIC *a)
  */
 static bool trans_SBIS(DisasContext *ctx, arg_SBIS *a)
 {
-    TCGv data = tcg_temp_new_i32();
-    TCGv port = tcg_const_i32(a->reg);
+    TCGv temp = tcg_const_i32(a->reg);
 
-    gen_helper_inb(data, cpu_env, port);
-
-    tcg_gen_andi_tl(data, data, 1 << a->bit);
-    tcg_gen_setcondi_tl(TCG_COND_NE, cpu_skip, data, 0);
-
-    tcg_temp_free_i32(port);
-    tcg_temp_free_i32(data);
-
-    ctx->check_skip++;
+    gen_helper_inb(temp, cpu_env, temp);
+    tcg_gen_andi_tl(temp, temp, 1 << a->bit);
+    ctx->skip_cond = TCG_COND_NE;
+    ctx->skip_var0 = temp;
+    ctx->free_skip_var0 = true;
 
     return true;
 }
@@ -2319,15 +2323,12 @@ static bool trans_SBIW(DisasContext *ctx, arg_SBIW *a)
 static bool trans_SBRC(DisasContext *ctx, arg_SBRC *a)
 {
     TCGv Rr = cpu_r[a->rr];
-    TCGv t0 = tcg_temp_new_i32();
 
-    tcg_gen_andi_tl(t0, Rr, 1 << a->bit);
-    tcg_gen_setcondi_tl(TCG_COND_EQ, cpu_skip, t0, 0);
+    ctx->skip_cond = TCG_COND_EQ;
+    ctx->skip_var0 = tcg_temp_new();
+    ctx->free_skip_var0 = true;
 
-    tcg_temp_free_i32(t0);
-
-    ctx->check_skip++;
-
+    tcg_gen_andi_tl(ctx->skip_var0, Rr, 1 << a->bit);
     return true;
 }
 
@@ -2338,15 +2339,12 @@ static bool trans_SBRC(DisasContext *ctx, arg_SBRC *a)
 static bool trans_SBRS(DisasContext *ctx, arg_SBRS *a)
 {
     TCGv Rr = cpu_r[a->rr];
-    TCGv t0 = tcg_temp_new_i32();
 
-    tcg_gen_andi_tl(t0, Rr, 1 << a->bit);
-    tcg_gen_setcondi_tl(TCG_COND_NE, cpu_skip, t0, 0);
+    ctx->skip_cond = TCG_COND_NE;
+    ctx->skip_var0 = tcg_temp_new();
+    ctx->free_skip_var0 = true;
 
-    tcg_temp_free_i32(t0);
-
-    ctx->check_skip++;
-
+    tcg_gen_andi_tl(ctx->skip_var0, Rr, 1 << a->bit);
     return true;
 }
 
@@ -2722,6 +2720,51 @@ static void translate(DisasContext *ctx)
     }
 }
 
+/* Standardize the cpu_skip condition to NE.  */
+static bool canonicalize_skip(DisasContext *ctx)
+{
+    switch (ctx->skip_cond) {
+    case TCG_COND_NEVER:
+        /* Normal case: cpu_skip is known to be false.  */
+        return false;
+
+    case TCG_COND_ALWAYS:
+        /*
+         * Breakpoint case: cpu_skip is known to be true, via TB_FLAGS_SKIP.
+         * The breakpoint is on the instruction being skipped, at the start
+         * of the TranslationBlock.  No need to update.
+         */
+        return false;
+
+    case TCG_COND_NE:
+        if (ctx->skip_var1 == NULL) {
+            tcg_gen_mov_tl(cpu_skip, ctx->skip_var0);
+        } else {
+            tcg_gen_xor_tl(cpu_skip, ctx->skip_var0, ctx->skip_var1);
+            ctx->skip_var1 = NULL;
+        }
+        break;
+
+    default:
+        /* Convert to a NE condition vs 0. */
+        if (ctx->skip_var1 == NULL) {
+            tcg_gen_setcondi_tl(ctx->skip_cond, cpu_skip, ctx->skip_var0, 0);
+        } else {
+            tcg_gen_setcond_tl(ctx->skip_cond, cpu_skip,
+                               ctx->skip_var0, ctx->skip_var1);
+            ctx->skip_var1 = NULL;
+        }
+        ctx->skip_cond = TCG_COND_NE;
+        break;
+    }
+    if (ctx->free_skip_var0) {
+        tcg_temp_free(ctx->skip_var0);
+        ctx->free_skip_var0 = false;
+    }
+    ctx->skip_var0 = cpu_skip;
+    return true;
+}
+
 void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
 {
     CPUAVRState *env = cs->env_ptr;
@@ -2731,6 +2774,7 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
         .env = env,
         .memidx = 0,
         .bstate = DISAS_NEXT,
+        .skip_cond = TCG_COND_NEVER,
         .singlestep = cs->singlestep_enabled,
     };
     target_ulong pc_start = tb->pc / 2;
@@ -2750,8 +2794,14 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
     gen_tb_start(tb);
 
     ctx.npc = pc_start;
-    ctx.check_skip = 1;
+    if (tb->flags & TB_FLAGS_SKIP) {
+        ctx.skip_cond = TCG_COND_ALWAYS;
+        ctx.skip_var0 = cpu_skip;
+    }
+
     do {
+        TCGLabel *skip_label = NULL;
+
         /* translate current instruction */
         tcg_gen_insn_start(ctx.npc);
         num_insns++;
@@ -2765,25 +2815,46 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
         if (unlikely(!ctx.singlestep &&
                 (cpu_breakpoint_test(cs, OFFSET_CODE + ctx.npc * 2, BP_ANY) ||
                  cpu_breakpoint_test(cs, OFFSET_DATA + ctx.npc * 2, BP_ANY)))) {
+            canonicalize_skip(&ctx);
             tcg_gen_movi_tl(cpu_pc, ctx.npc);
             gen_helper_debug(cpu_env);
             goto done_generating;
         }
 
-        if (ctx.check_skip > 0) {
-            TCGLabel *skip = gen_new_label();
-            TCGLabel *done = gen_new_label();
-
-            tcg_gen_brcondi_tl(TCG_COND_NE, cpu_skip, 0, skip);
-                translate(&ctx);
-                tcg_gen_br(done);
-            gen_set_label(skip);
+        /* Conditionally skip the next instruction, if indicated.  */
+        if (ctx.skip_cond != TCG_COND_NEVER) {
+            skip_label = gen_new_label();
+            if (ctx.skip_var0 == cpu_skip) {
+                /*
+                 * Copy cpu_skip so that we may zero it before the branch.
+                 * This ensures that cpu_skip is non-zero after the label
+                 * if and only if the skipped insn itself sets a skip.
+                 */
+                ctx.free_skip_var0 = true;
+                ctx.skip_var0 = tcg_temp_new();
+                tcg_gen_mov_tl(ctx.skip_var0, cpu_skip);
                 tcg_gen_movi_tl(cpu_skip, 0);
-                tcg_gen_movi_tl(cpu_pc, ctx.npc);
-            gen_set_label(done);
-            ctx.check_skip--;
-        } else {
-            translate(&ctx);
+            }
+            if (ctx.skip_var1 == NULL) {
+                tcg_gen_brcondi_tl(ctx.skip_cond, ctx.skip_var0, 0, skip_label);
+            } else {
+                tcg_gen_brcond_tl(ctx.skip_cond, ctx.skip_var0,
+                                  ctx.skip_var1, skip_label);
+                ctx.skip_var1 = NULL;
+            }
+            if (ctx.free_skip_var0) {
+                tcg_temp_free(ctx.skip_var0);
+                ctx.free_skip_var0 = false;
+            }
+            ctx.skip_cond = TCG_COND_NEVER;
+            ctx.skip_var0 = NULL;
+        }
+
+        translate(&ctx);
+
+        if (skip_label) {
+            canonicalize_skip(&ctx);
+            gen_set_label(skip_label);
         }
     } while (ctx.bstate == DISAS_NEXT
              && num_insns < max_insns
@@ -2794,15 +2865,22 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
         gen_io_end();
     }
 
+    bool nonconst_skip = canonicalize_skip(&ctx);
+
     switch (ctx.bstate) {
     case DISAS_NORETURN:
+        assert(!nonconst_skip);
         break;
     case DISAS_NEXT:
     case DISAS_TOO_MANY:
     case DISAS_CHAIN:
-        /* Note gen_goto_tb checks singlestep.  */
-        gen_goto_tb(&ctx, 0, ctx.npc);
-        break;
+        if (!nonconst_skip) {
+            /* Note gen_goto_tb checks singlestep.  */
+            gen_goto_tb(&ctx, 0, ctx.npc);
+            break;
+        }
+        tcg_gen_movi_tl(cpu_pc, ctx.npc);
+        /* fall through */
     case DISAS_LOOKUP:
         if (!ctx.singlestep) {
             tcg_gen_lookup_and_goto_ptr();
