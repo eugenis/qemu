@@ -2738,9 +2738,17 @@ static bool trans_XCH(DisasContext *ctx, arg_XCH *a)
 
 void avr_cpu_tcg_init(void)
 {
+    static const char reg_names[32][4] = {
+        "r0",  "r1",  "r2",  "r3",  "r4",  "r5",  "r6",  "r7",
+        "r8",  "r9",  "r10", "r11", "r12", "r13", "r14", "r15",
+        "r16", "r17", "r18", "r19", "r20", "r21", "r22", "r23",
+        "r24", "r25", "r26", "r27", "r28", "r29", "r30", "r31",
+    };
+
     int i;
 
 #define AVR_REG_OFFS(x) offsetof(CPUAVRState, x)
+
     cpu_pc = tcg_global_mem_new_i32(cpu_env, AVR_REG_OFFS(pc_w), "pc");
     cpu_Cf = tcg_global_mem_new_i32(cpu_env, AVR_REG_OFFS(sregC), "Cf");
     cpu_Zf = tcg_global_mem_new_i32(cpu_env, AVR_REG_OFFS(sregZ), "Zf");
@@ -2759,12 +2767,11 @@ void avr_cpu_tcg_init(void)
     cpu_skip = tcg_global_mem_new_i32(cpu_env, AVR_REG_OFFS(skip), "skip");
 
     for (i = 0; i < 32; i++) {
-        char name[16];
-
-        sprintf(name, "r[%d]", i);
-
-        cpu_r[i] = tcg_global_mem_new_i32(cpu_env, AVR_REG_OFFS(r[i]), name);
+        cpu_r[i] = tcg_global_mem_new_i32(cpu_env, AVR_REG_OFFS(r[i]),
+                                          reg_names[i]);
     }
+
+#undef AVR_REG_OFFS
 }
 
 static void translate(DisasContext *ctx)
