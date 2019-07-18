@@ -4488,7 +4488,7 @@ static void gen_sse(CPUX86State *env, DisasContext *s, int b,
 
 /* convert one instruction. s->base.is_jmp is set if the translation must
    be stopped. Return the next pc value */
-static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
+static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
 {
     CPUX86State *env = cpu->env_ptr;
     int b;
@@ -4516,7 +4516,7 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
     s->vex_v = 0;
     if (sigsetjmp(s->jmpbuf, 0) != 0) {
         gen_exception(s, EXCP0D_GPF, pc_start - s->cs_base);
-        return s->pc;
+        return DISAS_NORETURN;
     }
 
     prefixes = 0;
@@ -8382,13 +8382,13 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
     default:
         goto unknown_op;
     }
-    return s->pc;
+    return s->base.is_jmp;
  illegal_op:
     gen_illegal_opcode(s);
-    return s->pc;
+    return DISAS_NORETURN;
  unknown_op:
     gen_unknown_opcode(env, s);
-    return s->pc;
+    return DISAS_NORETURN;
 }
 
 void tcg_x86_init(void)
@@ -8575,41 +8575,54 @@ static bool i386_tr_breakpoint_check(DisasContextBase *dcbase, CPUState *cpu,
 static void i386_tr_translate_insn(DisasContextBase *dcbase, CPUState *cpu)
 {
     DisasContext *dc = container_of(dcbase, DisasContext, base);
-    target_ulong pc_next = disas_insn(dc, cpu);
+    DisasJumpType is_jmp = disas_insn(dc, cpu);
+    target_ulong pc_next = dc->pc;
 
-    if (dc->tf || (dc->base.tb->flags & HF_INHIBIT_IRQ_MASK)) {
-        /* if single step mode, we generate only one instruction and
-           generate an exception */
-        /* if irq were inhibited with HF_INHIBIT_IRQ_MASK, we clear
-           the flag and abort the translation to give the irqs a
-           chance to happen */
-        dc->base.is_jmp = DISAS_TOO_MANY;
-    } else if ((tb_cflags(dc->base.tb) & CF_USE_ICOUNT)
-               && ((pc_next & TARGET_PAGE_MASK)
-                   != ((pc_next + TARGET_MAX_INSN_SIZE - 1)
-                       & TARGET_PAGE_MASK)
-                   || (pc_next & ~TARGET_PAGE_MASK) == 0)) {
-        /* Do not cross the boundary of the pages in icount mode,
-           it can cause an exception. Do it only when boundary is
-           crossed by the first instruction in the block.
-           If current instruction already crossed the bound - it's ok,
-           because an exception hasn't stopped this code.
-         */
-        dc->base.is_jmp = DISAS_TOO_MANY;
-    } else if ((pc_next - dc->base.pc_first) >= (TARGET_PAGE_SIZE - 32)) {
-        dc->base.is_jmp = DISAS_TOO_MANY;
+    if (is_jmp == DISAS_NEXT) {
+
+        if (dc->tf || (dc->base.tb->flags & HF_INHIBIT_IRQ_MASK)) {
+            /*
+             * If single step mode, we generate only one instruction and
+             * generate an exception.  If irq were inhibited with
+             * HF_INHIBIT_IRQ_MASK, we clear the flag and abort the
+             * translation to give the irqs a chance to happen.
+             */
+            is_jmp = DISAS_TOO_MANY;
+        } else if ((tb_cflags(dc->base.tb) & CF_USE_ICOUNT)
+                   && ((pc_next & TARGET_PAGE_MASK)
+                       != ((pc_next + TARGET_MAX_INSN_SIZE - 1)
+                           & TARGET_PAGE_MASK)
+                       || (pc_next & ~TARGET_PAGE_MASK) == 0)) {
+            /*
+             * Do not cross the boundary of the pages in icount mode,
+             * it can cause an exception. Do it only when boundary is
+             * crossed by the first instruction in the block.
+             * If current instruction already crossed the bound - it's ok,
+             * because an exception hasn't stopped this code.
+             */
+            is_jmp = DISAS_TOO_MANY;
+        } else if ((pc_next - dc->base.pc_first) >= (TARGET_PAGE_SIZE - 32)) {
+            is_jmp = DISAS_TOO_MANY;
+        }
     }
 
     dc->base.pc_next = pc_next;
+    dc->base.is_jmp = is_jmp;
 }
 
 static void i386_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
 {
     DisasContext *dc = container_of(dcbase, DisasContext, base);
 
-    if (dc->base.is_jmp == DISAS_TOO_MANY) {
+    switch (dc->base.is_jmp) {
+    case DISAS_TOO_MANY:
         gen_jmp_im(dc, dc->base.pc_next - dc->cs_base);
         gen_eob(dc);
+        break;
+    case DISAS_NORETURN:
+        break;
+    default:
+        g_assert_not_reached();
     }
 }
 
