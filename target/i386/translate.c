@@ -32,6 +32,9 @@
 #include "trace-tcg.h"
 #include "exec/log.h"
 
+#define DISAS_UNKNOWN    DISAS_TARGET_0
+#define DISAS_ILLEGAL    DISAS_TARGET_1
+
 #define PREFIX_REPZ   0x01
 #define PREFIX_REPNZ  0x02
 #define PREFIX_LOCK   0x04
@@ -8384,11 +8387,9 @@ static DisasJumpType disas_insn(DisasContext *s, CPUState *cpu)
     }
     return s->base.is_jmp;
  illegal_op:
-    gen_illegal_opcode(s);
-    return DISAS_NORETURN;
+    return DISAS_ILLEGAL;
  unknown_op:
-    gen_unknown_opcode(env, s);
-    return DISAS_NORETURN;
+    return DISAS_UNKNOWN;
 }
 
 void tcg_x86_init(void)
@@ -8620,6 +8621,12 @@ static void i386_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
         gen_eob(dc);
         break;
     case DISAS_NORETURN:
+        break;
+    case DISAS_UNKNOWN:
+        gen_unknown_opcode(cpu->env_ptr, dc);
+        break;
+    case DISAS_ILLEGAL:
+        gen_illegal_opcode(dc);
         break;
     default:
         g_assert_not_reached();
